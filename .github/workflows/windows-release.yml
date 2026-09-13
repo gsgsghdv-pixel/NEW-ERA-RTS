@@ -13,28 +13,34 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Download Godot 4.7.2
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          Invoke-WebRequest -Uri "https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_win64.exe.zip" -OutFile "$env:RUNNER_TEMP\godot.zip"
+          $url = "https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_win64.exe.zip"
+          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\godot.zip"
           Expand-Archive "$env:RUNNER_TEMP\godot.zip" -DestinationPath "$env:RUNNER_TEMP\godot" -Force
           $exe = Get-ChildItem "$env:RUNNER_TEMP\godot" -Filter "Godot_v4.7.2-stable_win64.exe" -Recurse | Select-Object -First 1
           if (-not $exe) { throw "Godot executable not found" }
           "GODOT=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
       - name: Download export templates
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          Invoke-WebRequest -Uri "https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz" -OutFile "$env:RUNNER_TEMP\templates.tpz"
+          $url = "https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz"
+          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\templates.tpz"
           $dest = "$env:APPDATA\Godot\export_templates\4.7.2.stable"
           New-Item -ItemType Directory -Force -Path $dest | Out-Null
           Expand-Archive "$env:RUNNER_TEMP\templates.tpz" -DestinationPath "$env:RUNNER_TEMP\templates" -Force
           $root = Get-ChildItem "$env:RUNNER_TEMP\templates" -Directory | Select-Object -First 1
           if ($root) { Copy-Item "$($root.FullName)\*" $dest -Recurse -Force } else { Copy-Item "$env:RUNNER_TEMP\templates\*" $dest -Recurse -Force }
+
       - name: Static QA
         shell: pwsh
         run: python scripts\qa_check.py
+
       - name: Validate project
         shell: pwsh
         run: |
@@ -42,6 +48,7 @@ jobs:
           $p = Start-Process -FilePath "$env:GODOT" -ArgumentList @('--headless','--path','.','--editor','--quit') -Wait -PassThru -NoNewWindow
           Write-Host "Godot validation exit code: $($p.ExitCode)"
           if ($p.ExitCode -ne 0) { throw "Godot project validation failed with exit code $($p.ExitCode)" }
+
       - name: Export Windows x86_64
         shell: pwsh
         run: |
@@ -53,20 +60,44 @@ jobs:
           Get-ChildItem build -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length
           if ($p.ExitCode -ne 0) { throw "Windows export failed with exit code $($p.ExitCode)" }
           if (-not (Test-Path "build\NEW_ERA_RTS.exe")) { throw "EXE was not produced" }
+          if (-not (Test-Path "build\NEW_ERA_RTS.pck")) { throw "PCK was not produced" }
+
+      - name: Runtime smoke test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $p = Start-Process -FilePath "build\NEW_ERA_RTS.exe" -ArgumentList @('--headless','--quit-after','3') -PassThru -NoNewWindow
+          if (-not $p.WaitForExit(15000)) {
+            Stop-Process -Id $p.Id -Force
+            throw "Runtime smoke test timed out"
+          }
+          Write-Host "Runtime smoke test exit code: $($p.ExitCode)"
+          if ($p.ExitCode -ne 0) { throw "Runtime smoke test failed" }
+
+      - name: Generate checksums
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Get-FileHash "build\NEW_ERA_RTS.exe" -Algorithm SHA256 | Format-List | Out-File "build\SHA256_EXE.txt"
+          Get-FileHash "build\NEW_ERA_RTS.pck" -Algorithm SHA256 | Format-List | Out-File "build\SHA256_PCK.txt"
+          Get-FileHash "build\NEW_ERA_RTS.exe" -Algorithm SHA256
+          Get-FileHash "build\NEW_ERA_RTS.pck" -Algorithm SHA256
+
       - name: Package
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           Compress-Archive -Path "build\*" -DestinationPath "NEW_ERA_RTS_Windows_x86_64.zip" -Force
           if (-not (Test-Path "NEW_ERA_RTS_Windows_x86_64.zip")) { throw "ZIP package was not produced" }
+
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
         with:
           name: NEW_ERA_RTS-Windows-x86_64
           path: build/NEW_ERA_RTS.exe
-      - name: Upload ZIP artifact
+
+      - name: Upload Windows package
         uses: actions/upload-artifact@v4
         with:
           name: NEW_ERA_RTS-Windows-Package
           path: NEW_ERA_RTS_Windows_x86_64.zip
-
-# Trigger a fresh Windows build after the export-process synchronization fix.
