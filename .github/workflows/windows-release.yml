@@ -14,27 +14,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Apply map size and camera safety fix
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $path = "scripts\main.gd"
-          $s = Get-Content $path -Raw -Encoding UTF8
-          $s = $s -replace 'const MAP_SIZE := 70\.0', 'const MAP_SIZE := 120.0'
-          $cameraPattern = 'cam = Camera3D\.new\(\)\s+cam\.position = Vector3\(0,35,31\)\s+cam\.rotation_degrees = Vector3\(-52,0,0\)\s+cam\.current = true\s+add_child\(cam\)'
-          $cameraReplacement = "cam = Camera3D.new()`n    cam.projection = Camera3D.PROJECTION_ORTHOGONAL`n    cam.size = 95.0`n    cam.position = Vector3(0,70,70)`n    cam.rotation_degrees = Vector3(-45,0,0)`n    cam.current = true`n    add_child(cam)"
-          $before = $s
-          $s = [regex]::Replace($s, $cameraPattern, $cameraReplacement)
-          if ($s -eq $before) { throw "Camera block not found; refusing unsafe build" }
-          $s = $s.Replace('var world := _mouse_world(m.position)', 'var world := _clamp_map_point(_mouse_world(m.position))')
-          $s = $s.Replace('u.position = u.position.move_toward(target, float(speed.get(u.get_meta("kind"),4.0))*delta)', 'u.position = u.position.move_toward(_clamp_map_point(target), float(speed.get(u.get_meta("kind"),4.0))*delta)')
-          $anchor = 'func _select_near(p: Vector3) -> void:'
-          $helper = "func _clamp_map_point(p: Vector3) -> Vector3:`n    var half := MAP_SIZE * 0.5 - 3.0`n    return Vector3(clamp(p.x,-half,half),0.0,clamp(p.z,-half,half))`n`n"
-          if (-not $s.Contains($anchor)) { throw "Selection function anchor not found" }
-          if (-not $s.Contains('func _clamp_map_point')) { $s = $s.Replace($anchor, $helper + $anchor) }
-          Set-Content $path -Value $s -Encoding UTF8
-          Write-Host "Map safety fix applied: MAP_SIZE=120, orthographic camera, clamped map commands."
-
       - name: Download Godot 4.7.2
         shell: pwsh
         run: |
