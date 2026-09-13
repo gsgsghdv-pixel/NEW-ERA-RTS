@@ -38,23 +38,26 @@ jobs:
       - name: Validate project
         shell: pwsh
         run: |
-          $p = Start-Process -FilePath "$env:GODOT" -ArgumentList "--headless --path . --editor --quit" -Wait -PassThru -NoNewWindow
-          Write-Host "Godot validation exit code: $($p.ExitCode)"
-          if ($p.ExitCode -ne 0) { throw "Godot project validation failed with exit code $($p.ExitCode)" }
+          & "$env:GODOT" --headless --path . --editor --quit
+          $code = $LASTEXITCODE
+          Write-Host "Godot validation exit code: $code"
+          if ($null -ne $code -and $code -ne 0) { throw "Godot project validation failed with exit code $code" }
       - name: Export Windows x86_64
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           New-Item -ItemType Directory -Force -Path build | Out-Null
-          $argline = '--headless --path . --export-release "Windows Desktop" "build\NEW_ERA_RTS.exe"'
-          $p = Start-Process -FilePath "$env:GODOT" -ArgumentList $argline -Wait -PassThru -NoNewWindow
-          Write-Host "Godot export exit code: $($p.ExitCode)"
+          & "$env:GODOT" --headless --path . --export-release "Windows Desktop" "build\NEW_ERA_RTS.exe"
+          $code = $LASTEXITCODE
+          Write-Host "Godot export exit code: $code"
           Get-ChildItem build -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length
-          if ($p.ExitCode -ne 0) { throw "Windows export failed with exit code $($p.ExitCode)" }
+          if ($null -ne $code -and $code -ne 0) { throw "Windows export failed with exit code $code" }
           if (-not (Test-Path "build\NEW_ERA_RTS.exe")) { throw "EXE was not produced" }
       - name: Package
         shell: pwsh
-        run: Compress-Archive -Path "build\*" -DestinationPath "NEW_ERA_RTS_Windows_x86_64.zip" -Force
+        run: |
+          Compress-Archive -Path "build\*" -DestinationPath "NEW_ERA_RTS_Windows_x86_64.zip" -Force
+          if (-not (Test-Path "NEW_ERA_RTS_Windows_x86_64.zip")) { throw "ZIP package was not produced" }
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
         with:
