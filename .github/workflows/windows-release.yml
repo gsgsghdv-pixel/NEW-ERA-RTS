@@ -1,0 +1,63 @@
+name: NEW ERA RTS - Windows Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    tags: [ "v*" ]
+
+jobs:
+  build-windows:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Download Godot 4.7.2
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $url = "https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_win64.exe.zip"
+          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\godot.zip"
+          Expand-Archive "$env:RUNNER_TEMP\godot.zip" -DestinationPath "$env:RUNNER_TEMP\godot" -Force
+          $exe = Get-ChildItem "$env:RUNNER_TEMP\godot" -Filter "Godot_v4.7.2-stable_win64.exe" -Recurse | Select-Object -First 1
+          if (-not $exe) { throw "Godot executable not found" }
+          "GODOT=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Download export templates
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $url = "https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz"
+          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\templates.tpz"
+          $dest = "$env:APPDATA\Godot\export_templates\4.7.2.stable"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Expand-Archive "$env:RUNNER_TEMP\templates.tpz" -DestinationPath "$env:RUNNER_TEMP\templates" -Force
+          $root = Get-ChildItem "$env:RUNNER_TEMP\templates" -Directory | Select-Object -First 1
+          if ($root) { Copy-Item "$($root.FullName)\*" $dest -Recurse -Force } else { Copy-Item "$env:RUNNER_TEMP\templates\*" $dest -Recurse -Force }
+      - name: Static QA
+        shell: pwsh
+        run: python scripts\qa_check.py
+      - name: Validate project
+        shell: pwsh
+        run: '& "$env:GODOT" --headless --path . --editor --quit'
+      - name: Export Windows x86_64
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path build | Out-Null
+          & "$env:GODOT" --headless --path . --export-release "Windows Desktop" "build\NEW_ERA_RTS.exe"
+          if ($LASTEXITCODE -ne 0) { throw "Windows export failed" }
+          if (-not (Test-Path "build\NEW_ERA_RTS.exe")) { throw "EXE was not produced" }
+      - name: Package
+        shell: pwsh
+        run: Compress-Archive -Path "build\*" -DestinationPath "NEW_ERA_RTS_Windows_x86_64.zip" -Force
+      - name: Upload EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NEW_ERA_RTS-Windows-x86_64
+          path: build/NEW_ERA_RTS.exe
+      - name: Upload ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NEW_ERA_RTS-Windows-Package
+          path: NEW_ERA_RTS_Windows_x86_64.zip
