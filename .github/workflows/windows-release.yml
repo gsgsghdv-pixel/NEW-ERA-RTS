@@ -34,31 +34,27 @@ jobs:
           Expand-Archive "$env:RUNNER_TEMP\templates.tpz" -DestinationPath "$env:RUNNER_TEMP\templates" -Force
           $root = Get-ChildItem "$env:RUNNER_TEMP\templates" -Directory | Select-Object -First 1
           if ($root) { Copy-Item "$($root.FullName)\*" $dest -Recurse -Force } else { Copy-Item "$env:RUNNER_TEMP\templates\*" $dest -Recurse -Force }
-          Write-Host "Installed export templates:"
           Get-ChildItem $dest -Recurse | Select-Object FullName,Length
       - name: Static QA
         shell: pwsh
         run: python scripts\qa_check.py
       - name: Validate project
         shell: pwsh
-        run: '& "$env:GODOT" --headless --path . --editor --quit --verbose'
+        run: |
+          $p = Start-Process -FilePath "$env:GODOT" -ArgumentList '--headless','--path','.','--editor','--quit' -Wait -PassThru -NoNewWindow
+          Write-Host "Godot validation exit code: $($p.ExitCode)"
+          if ($p.ExitCode -ne 0) { throw "Godot project validation failed with exit code $($p.ExitCode)" }
       - name: Export Windows x86_64
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           New-Item -ItemType Directory -Force -Path build | Out-Null
-          Write-Host "Godot version:"
-          & "$env:GODOT" --version
-          Write-Host "Project files:"
-          Get-ChildItem -Recurse -File | Select-Object FullName,Length | Out-Host
-          Write-Host "Export templates:"
-          Get-ChildItem "$env:APPDATA\Godot\export_templates\4.7.2.stable" -Recurse | Select-Object FullName,Length | Out-Host
-          & "$env:GODOT" --headless --verbose --path . --export-release "Windows Desktop" "build\NEW_ERA_RTS.exe"
-          $code = $LASTEXITCODE
-          Write-Host "Godot export exit code: $code"
+          $args = @('--headless','--path','.','--export-release','Windows Desktop','build\NEW_ERA_RTS.exe')
+          $p = Start-Process -FilePath "$env:GODOT" -ArgumentList $args -Wait -PassThru -NoNewWindow
+          Write-Host "Godot export exit code: $($p.ExitCode)"
           Write-Host "Build directory contents:"
-          Get-ChildItem build -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length | Out-Host
-          if ($code -ne 0) { throw "Windows export failed with exit code $code" }
+          Get-ChildItem build -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length
+          if ($p.ExitCode -ne 0) { throw "Windows export failed with exit code $($p.ExitCode)" }
           if (-not (Test-Path "build\NEW_ERA_RTS.exe")) { throw "EXE was not produced" }
       - name: Package
         shell: pwsh
