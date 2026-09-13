@@ -34,19 +34,25 @@ jobs:
           Expand-Archive "$env:RUNNER_TEMP\templates.tpz" -DestinationPath "$env:RUNNER_TEMP\templates" -Force
           $root = Get-ChildItem "$env:RUNNER_TEMP\templates" -Directory | Select-Object -First 1
           if ($root) { Copy-Item "$($root.FullName)\*" $dest -Recurse -Force } else { Copy-Item "$env:RUNNER_TEMP\templates\*" $dest -Recurse -Force }
+          Write-Host "Installed export templates:"
+          Get-ChildItem $dest -Recurse | Select-Object FullName,Length
       - name: Static QA
         shell: pwsh
         run: python scripts\qa_check.py
       - name: Validate project
         shell: pwsh
-        run: '& "$env:GODOT" --headless --path . --editor --quit'
+        run: '& "$env:GODOT" --headless --path . --editor --quit --verbose'
       - name: Export Windows x86_64
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           New-Item -ItemType Directory -Force -Path build | Out-Null
-          & "$env:GODOT" --headless --path . --export-release "Windows Desktop" "build\NEW_ERA_RTS.exe"
-          if ($LASTEXITCODE -ne 0) { throw "Windows export failed" }
+          & "$env:GODOT" --headless --path . --export-release "Windows Desktop" "build\NEW_ERA_RTS.exe" --verbose
+          $code = $LASTEXITCODE
+          Write-Host "Godot export exit code: $code"
+          Write-Host "Build directory contents:"
+          Get-ChildItem build -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length
+          if ($code -ne 0) { throw "Windows export failed with exit code $code" }
           if (-not (Test-Path "build\NEW_ERA_RTS.exe")) { throw "EXE was not produced" }
       - name: Package
         shell: pwsh
