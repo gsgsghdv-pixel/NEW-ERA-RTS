@@ -17,8 +17,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $url = "https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_win64.exe.zip"
-          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\godot.zip"
+          Invoke-WebRequest -Uri "https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_win64.exe.zip" -OutFile "$env:RUNNER_TEMP\godot.zip"
           Expand-Archive "$env:RUNNER_TEMP\godot.zip" -DestinationPath "$env:RUNNER_TEMP\godot" -Force
           $exe = Get-ChildItem "$env:RUNNER_TEMP\godot" -Filter "Godot_v4.7.2-stable_win64.exe" -Recurse | Select-Object -First 1
           if (-not $exe) { throw "Godot executable not found" }
@@ -27,8 +26,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $url = "https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz"
-          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\templates.tpz"
+          Invoke-WebRequest -Uri "https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz" -OutFile "$env:RUNNER_TEMP\templates.tpz"
           $dest = "$env:APPDATA\Godot\export_templates\4.7.2.stable"
           New-Item -ItemType Directory -Force -Path $dest | Out-Null
           Expand-Archive "$env:RUNNER_TEMP\templates.tpz" -DestinationPath "$env:RUNNER_TEMP\templates" -Force
@@ -40,18 +38,19 @@ jobs:
       - name: Validate project
         shell: pwsh
         run: |
-          & "$env:GODOT" --headless --path . --editor --quit
-          if ($LASTEXITCODE -ne 0) { throw "Godot project validation failed with exit code $LASTEXITCODE" }
+          $p = Start-Process -FilePath "$env:GODOT" -ArgumentList "--headless --path . --editor --quit" -Wait -PassThru -NoNewWindow
+          Write-Host "Godot validation exit code: $($p.ExitCode)"
+          if ($p.ExitCode -ne 0) { throw "Godot project validation failed with exit code $($p.ExitCode)" }
       - name: Export Windows x86_64
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           New-Item -ItemType Directory -Force -Path build | Out-Null
-          & "$env:GODOT" --headless --path . --export-release "Windows Desktop" "build\NEW_ERA_RTS.exe"
-          $code = $LASTEXITCODE
-          Write-Host "Godot export exit code: $code"
+          $argline = '--headless --path . --export-release "Windows Desktop" "build\NEW_ERA_RTS.exe"'
+          $p = Start-Process -FilePath "$env:GODOT" -ArgumentList $argline -Wait -PassThru -NoNewWindow
+          Write-Host "Godot export exit code: $($p.ExitCode)"
           Get-ChildItem build -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length
-          if ($code -ne 0) { throw "Windows export failed with exit code $code" }
+          if ($p.ExitCode -ne 0) { throw "Windows export failed with exit code $($p.ExitCode)" }
           if (-not (Test-Path "build\NEW_ERA_RTS.exe")) { throw "EXE was not produced" }
       - name: Package
         shell: pwsh
