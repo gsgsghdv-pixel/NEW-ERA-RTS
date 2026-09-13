@@ -38,20 +38,20 @@ jobs:
       - name: Validate project
         shell: pwsh
         run: |
-          & "$env:GODOT" --headless --path . --editor --quit
-          $code = $LASTEXITCODE
-          Write-Host "Godot validation exit code: $code"
-          if ($null -ne $code -and $code -ne 0) { throw "Godot project validation failed with exit code $code" }
+          $ErrorActionPreference = "Stop"
+          $p = Start-Process -FilePath "$env:GODOT" -ArgumentList @('--headless','--path','.','--editor','--quit') -Wait -PassThru -NoNewWindow
+          Write-Host "Godot validation exit code: $($p.ExitCode)"
+          if ($p.ExitCode -ne 0) { throw "Godot project validation failed with exit code $($p.ExitCode)" }
       - name: Export Windows x86_64
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           New-Item -ItemType Directory -Force -Path build | Out-Null
-          & "$env:GODOT" --headless --path . --export-release "Windows Desktop" "build\NEW_ERA_RTS.exe"
-          $code = $LASTEXITCODE
-          Write-Host "Godot export exit code: $code"
+          $argline = '--headless --path . --export-release "Windows Desktop" "build\NEW_ERA_RTS.exe"'
+          $p = Start-Process -FilePath "$env:GODOT" -ArgumentList $argline -Wait -PassThru -NoNewWindow
+          Write-Host "Godot export exit code: $($p.ExitCode)"
           Get-ChildItem build -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length
-          if ($null -ne $code -and $code -ne 0) { throw "Windows export failed with exit code $code" }
+          if ($p.ExitCode -ne 0) { throw "Windows export failed with exit code $($p.ExitCode)" }
           if (-not (Test-Path "build\NEW_ERA_RTS.exe")) { throw "EXE was not produced" }
       - name: Package
         shell: pwsh
