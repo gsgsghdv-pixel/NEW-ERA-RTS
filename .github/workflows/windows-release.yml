@@ -68,3 +68,5 @@ jobs:
         with:
           name: NEW_ERA_RTS-Windows-Package
           path: NEW_ERA_RTS_Windows_x86_64.zip
+
+# Trigger a fresh Windows build after the export-process synchronization fix.
