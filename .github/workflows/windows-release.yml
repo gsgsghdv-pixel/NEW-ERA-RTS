@@ -47,11 +47,17 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           New-Item -ItemType Directory -Force -Path build | Out-Null
-          & "$env:GODOT" --headless --path . --export-release "Windows Desktop" "build\NEW_ERA_RTS.exe" --verbose
+          Write-Host "Godot version:"
+          & "$env:GODOT" --version
+          Write-Host "Project files:"
+          Get-ChildItem -Recurse -File | Select-Object FullName,Length | Out-Host
+          Write-Host "Export templates:"
+          Get-ChildItem "$env:APPDATA\Godot\export_templates\4.7.2.stable" -Recurse | Select-Object FullName,Length | Out-Host
+          & "$env:GODOT" --headless --verbose --path . --export-release "Windows Desktop" "build\NEW_ERA_RTS.exe"
           $code = $LASTEXITCODE
           Write-Host "Godot export exit code: $code"
           Write-Host "Build directory contents:"
-          Get-ChildItem build -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length
+          Get-ChildItem build -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length | Out-Host
           if ($code -ne 0) { throw "Windows export failed with exit code $code" }
           if (-not (Test-Path "build\NEW_ERA_RTS.exe")) { throw "EXE was not produced" }
       - name: Package
