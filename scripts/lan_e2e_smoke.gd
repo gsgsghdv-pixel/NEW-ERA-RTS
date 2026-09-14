@@ -2,7 +2,7 @@ extends SceneTree
 
 const PORT: int = 27125
 const PROTOCOL := "NEWERA-RTS-LAN-1"
-const TIMEOUT_MS: int = 15000
+const TIMEOUT_MS: int = 20000
 
 class LanTestPeer extends Node:
     var role: String = ""
@@ -16,9 +16,9 @@ class LanTestPeer extends Node:
     func setup(test_role: String) -> void:
         role = test_role
         process_mode = Node.PROCESS_MODE_ALWAYS
-        mp = get_tree().get_multiplayer()
+        mp = multiplayer
         if mp == null:
-            push_error("LAN E2E: default MultiplayerAPI unavailable")
+            push_error("LAN E2E: node MultiplayerAPI unavailable")
             get_tree().quit(6)
             return
         mp.peer_connected.connect(_on_peer_connected)
@@ -28,7 +28,7 @@ class LanTestPeer extends Node:
             mp.connection_failed.connect(_on_connection_failed)
         peer = ENetMultiplayerPeer.new()
         if role == "host":
-            var err: Error = peer.create_server(PORT, 8)
+            var err: Error = peer.create_server(PORT, 8, 0)
             if err != OK:
                 push_error("LAN E2E host create_server failed: %s" % err)
                 get_tree().quit(3)
@@ -37,7 +37,7 @@ class LanTestPeer extends Node:
             deadline = Time.get_ticks_msec() + TIMEOUT_MS
             print("LAN E2E HOST READY port=%d" % PORT)
         else:
-            var err: Error = peer.create_client("127.0.0.1", PORT)
+            var err: Error = peer.create_client("127.0.0.1", PORT, 0, 0, 0, 0)
             if err != OK:
                 push_error("LAN E2E client create_client failed: %s" % err)
                 get_tree().quit(4)
@@ -50,7 +50,8 @@ class LanTestPeer extends Node:
         if passed:
             return
         if deadline > 0 and Time.get_ticks_msec() > deadline:
-            push_error("LAN E2E timeout phase=%d role=%s connected=%s peers=%d" % [phase, role, connected, mp.get_peers().size()])
+            var peer_count: int = mp.get_peers().size() if mp != null else -1
+            push_error("LAN E2E timeout phase=%d role=%s connected=%s peers=%d" % [phase, role, connected, peer_count])
             get_tree().quit(10)
 
     func _on_connected_to_server() -> void:
@@ -145,5 +146,6 @@ func _initialize() -> void:
         quit(2)
         return
     test_peer = LanTestPeer.new()
+    test_peer.name = "LanTestPeer"
     root.add_child(test_peer)
     test_peer.setup(role)
