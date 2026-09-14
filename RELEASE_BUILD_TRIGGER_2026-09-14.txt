@@ -1,0 +1,3 @@
+NEW ERA RTS release verification trigger
+Deep Systems QA transport-path fix is ready.
+Run full Windows release pipeline.
