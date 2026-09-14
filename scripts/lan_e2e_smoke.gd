@@ -16,11 +16,13 @@ class LanTestPeer extends Node:
     func setup(test_role: String) -> void:
         role = test_role
         process_mode = Node.PROCESS_MODE_ALWAYS
-        mp = multiplayer
+        set_multiplayer_authority(1)
+        mp = get_tree().get_multiplayer()
         if mp == null:
-            push_error("LAN E2E: node MultiplayerAPI unavailable")
+            push_error("LAN E2E: MultiplayerAPI unavailable")
             get_tree().quit(6)
             return
+        get_tree().set_multiplayer_poll_enabled(false)
         mp.peer_connected.connect(_on_peer_connected)
         mp.peer_disconnected.connect(_on_peer_disconnected)
         if role == "client":
@@ -35,7 +37,7 @@ class LanTestPeer extends Node:
                 return
             mp.multiplayer_peer = peer
             deadline = Time.get_ticks_msec() + TIMEOUT_MS
-            print("LAN E2E HOST READY port=%d" % PORT)
+            print("LAN E2E HOST READY port=%d id=%d" % [PORT, mp.get_unique_id()])
         else:
             var err: Error = peer.create_client("127.0.0.1", PORT, 0, 0, 0, 0)
             if err != OK:
@@ -44,9 +46,11 @@ class LanTestPeer extends Node:
                 return
             mp.multiplayer_peer = peer
             deadline = Time.get_ticks_msec() + TIMEOUT_MS
-            print("LAN E2E CLIENT CONNECTING")
+            print("LAN E2E CLIENT CONNECTING id=%d" % mp.get_unique_id())
 
     func _process(_delta: float) -> void:
+        if mp != null and mp.has_multiplayer_peer():
+            mp.poll()
         if passed:
             return
         if deadline > 0 and Time.get_ticks_msec() > deadline:
@@ -90,9 +94,6 @@ class LanTestPeer extends Node:
         elif role == "client" and sender == 1:
             phase = 2
             print("LAN E2E CLIENT: protocol accepted")
-            rpc_id(1, "receive_ready", true)
-            phase = 3
-            print("LAN E2E CLIENT: ready sent")
 
     @rpc("authority", "reliable")
     func receive_lobby(state: Dictionary) -> void:
