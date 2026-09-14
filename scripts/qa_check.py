@@ -5,6 +5,7 @@ main=(ROOT/'scripts/main.gd').read_text(encoding='utf-8')
 guard=(ROOT/'scripts/network_guard.gd').read_text(encoding='utf-8')
 scene=(ROOT/'scenes/main.tscn').read_text(encoding='utf-8')
 lobby=(ROOT/'scripts/lan_lobby.gd').read_text(encoding='utf-8')
+smoke=(ROOT/'scripts/lan_e2e_smoke.gd').read_text(encoding='utf-8')
 errors=[]
 funcs=re.findall(r'^func\s+([A-Za-z0-9_]+)\s*\(', main, re.M)
 from collections import Counter
@@ -37,7 +38,6 @@ if 'LANLobby' not in scene or 'res://scripts/lan_lobby.gd' not in scene:
     errors.append('LAN lobby is not integrated into main scene')
 for token in ['const MAX_PLAYERS := 8','@rpc("any_peer", "reliable")','submit_player','receive_lobby_state','_host_start','can_enter_match','_host_lan','_join_lan','_start_gameplay']:
     if token not in lobby: errors.append(f'LAN lobby missing: {token}')
-smoke=(ROOT/'scripts/lan_e2e_smoke.gd').read_text(encoding='utf-8')
 for token in ['ENetMultiplayerPeer','create_server','create_client','receive_protocol','receive_lobby','receive_ready','receive_start','LAN E2E PASS']:
     if token not in smoke: errors.append(f'LAN E2E smoke missing: {token}')
 if 'PORT' not in smoke or '127.0.0.1' not in smoke:
