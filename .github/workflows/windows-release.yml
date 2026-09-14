@@ -61,6 +61,23 @@ jobs:
         shell: pwsh
         run: python scripts\deep_system_qa.py
 
+      - name: LAN two-process E2E smoke test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $hostLog = Join-Path $env:RUNNER_TEMP "lan-host.log"
+          $clientLog = Join-Path $env:RUNNER_TEMP "lan-client.log"
+          $host = Start-Process -FilePath "$env:GODOT" -ArgumentList @('--headless','--path','.','--script','scripts/lan_e2e_smoke.gd','--','--role=host') -PassThru -RedirectStandardOutput $hostLog -RedirectStandardError "$hostLog.err"
+          Start-Sleep -Seconds 2
+          $client = Start-Process -FilePath "$env:GODOT" -ArgumentList @('--headless','--path','.','--script','scripts/lan_e2e_smoke.gd','--','--role=client') -PassThru -RedirectStandardOutput $clientLog -RedirectStandardError "$clientLog.err"
+          if (-not $client.WaitForExit(15000)) { Stop-Process -Id $client.Id -Force; throw "LAN client E2E timed out" }
+          if (-not $host.WaitForExit(5000)) { Stop-Process -Id $host.Id -Force; throw "LAN host E2E timed out" }
+          Get-Content $hostLog -ErrorAction SilentlyContinue
+          Get-Content $clientLog -ErrorAction SilentlyContinue
+          if ($client.ExitCode -ne 0) { throw "LAN client E2E failed with exit code $($client.ExitCode)" }
+          if ($host.ExitCode -ne 0) { throw "LAN host E2E failed with exit code $($host.ExitCode)" }
+          Write-Host "LAN two-process E2E: PASS"
+
       - name: Export Windows x86_64
         shell: pwsh
         run: |
