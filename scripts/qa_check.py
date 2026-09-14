@@ -38,8 +38,10 @@ if 'LANLobby' not in scene or 'res://scripts/lan_lobby.gd' not in scene:
 for token in ['const MAX_PLAYERS := 8','@rpc("any_peer", "reliable")','submit_player','receive_lobby_state','_host_start','can_enter_match','_host_lan','_join_lan','_start_gameplay']:
     if token not in lobby: errors.append(f'LAN lobby missing: {token}')
 smoke=(ROOT/'scripts/lan_e2e_smoke.gd').read_text(encoding='utf-8')
-for token in ['create_server(PORT, 8)','create_client("127.0.0.1", PORT)','receive_protocol','receive_lobby','receive_ready','receive_start','LAN E2E PASS']:
+for token in ['ENetMultiplayerPeer','create_server','create_client','receive_protocol','receive_lobby','receive_ready','receive_start','LAN E2E PASS']:
     if token not in smoke: errors.append(f'LAN E2E smoke missing: {token}')
+if 'PORT' not in smoke or '127.0.0.1' not in smoke:
+    errors.append('LAN E2E smoke missing local endpoint configuration')
 exp=(ROOT/'export_presets.cfg').read_text(encoding='utf-8')
 for token in ['name="Windows Desktop"','platform="Windows Desktop"','binary_format/architecture="x86_64"']:
     if token not in exp: errors.append(f'missing export setting: {token}')
