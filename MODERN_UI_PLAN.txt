@@ -1,0 +1,1 @@
+Modern RTS presentation update: responsive HUD, RTS camera zoom/pan, command panel, selection panel, minimap, fullscreen-friendly layout.
