@@ -10,6 +10,7 @@ var status_label: Label
 var map_label: Label
 var faction_label: Label
 var team_label: Label
+var ip_edit: LineEdit
 var ready := false
 var local_name := "Player"
 var selected_faction := 0
@@ -17,9 +18,14 @@ var selected_team := 1
 var selected_map := 0
 var factions := ["لبنان", "الشام", "الرافدين", "المشرق"]
 var maps := ["وادي الأرز", "الساحل", "الصحراء", "المدينة", "الحدود"]
+var game: Node
 
 func _ready() -> void:
     layer = 20
+    game = get_parent()
+    if game != null:
+        game.set_process(false)
+        game.set_process_unhandled_input(false)
     _build_ui()
     multiplayer.peer_connected.connect(_peer_connected)
     multiplayer.peer_disconnected.connect(_peer_disconnected)
@@ -27,11 +33,11 @@ func _ready() -> void:
 
 func _build_ui() -> void:
     lobby_panel = Panel.new()
-    lobby_panel.position = Vector2(310, 120)
-    lobby_panel.size = Vector2(650, 470)
+    lobby_panel.position = Vector2(310, 95)
+    lobby_panel.size = Vector2(650, 540)
     add_child(lobby_panel)
     var title := Label.new()
-    title.text = "LAN LOBBY — NEW ERA RTS"
+    title.text = "NEW ERA RTS — LAN LOBBY"
     title.position = Vector2(25, 18)
     title.add_theme_font_size_override("font_size", 28)
     lobby_panel.add_child(title)
@@ -52,13 +58,22 @@ func _build_ui() -> void:
     team_label = Label.new()
     team_label.position = Vector2(440, 175)
     lobby_panel.add_child(team_label)
-    _button("تغيير الفصيل", 440, 215, _cycle_faction)
-    _button("تغيير الفريق", 440, 255, _cycle_team)
-    _button("تغيير الخريطة", 440, 295, _cycle_map)
-    _button("جاهز / غير جاهز", 440, 335, _toggle_ready)
-    _button("بدء المباراة — Host", 440, 375, _host_start)
-    _button("إغلاق Lobby", 440, 415, _close_lobby)
-    status_label.text = "LAN: في انتظار اللاعبين"
+    ip_edit = LineEdit.new()
+    ip_edit.text = "127.0.0.1"
+    ip_edit.placeholder_text = "IP المضيف"
+    ip_edit.position = Vector2(25, 390)
+    ip_edit.size = Vector2(260, 36)
+    lobby_panel.add_child(ip_edit)
+    _button("لعب فردي", 440, 215, _single_player)
+    _button("استضافة LAN", 440, 255, _host_lan)
+    _button("انضمام LAN", 440, 295, _join_lan)
+    _button("تغيير الفصيل", 440, 335, _cycle_faction)
+    _button("تغيير الفريق", 440, 375, _cycle_team)
+    _button("تغيير الخريطة — Host", 440, 415, _cycle_map)
+    _button("جاهز / غير جاهز", 440, 455, _toggle_ready)
+    _button("بدء المباراة — Host", 440, 495, _host_start)
+    _button("إغلاق Lobby", 440, 535, _close_lobby)
+    status_label.text = "LAN: اختر لعب فردي أو استضافة/انضمام"
 
 func _button(text: String, x: float, y: float, action: Callable) -> void:
     var b := Button.new()
@@ -68,17 +83,39 @@ func _button(text: String, x: float, y: float, action: Callable) -> void:
     b.pressed.connect(action)
     lobby_panel.add_child(b)
 
+func _single_player() -> void:
+    host_started = true
+    _start_gameplay()
+    status_label.text = "وضع اللاعب الفردي"
+
+func _host_lan() -> void:
+    if game == null: return
+    game.call("_host")
+    if multiplayer.multiplayer_peer != null and multiplayer.is_server():
+        players[1] = _player_data()
+        status_label.text = "Host: في انتظار اللاعبين — المنفذ 27015"
+        _broadcast_lobby_state()
+    _refresh()
+
+func _join_lan() -> void:
+    if game == null: return
+    var main_ip = game.get("ip_edit")
+    if main_ip is LineEdit:
+        main_ip.text = ip_edit.text.strip_edges()
+    game.call("_join")
+    status_label.text = "Client: جارٍ الاتصال بـ %s" % ip_edit.text.strip_edges()
+
 func _peer_connected(id: int) -> void:
     if multiplayer.is_server():
         if players.size() >= MAX_PLAYERS:
             multiplayer.disconnect_peer(id)
             return
         _send_lobby_state(id)
-        _broadcast_player_state()
 
 func _peer_disconnected(id: int) -> void:
     players.erase(id)
     _refresh()
+    if multiplayer.is_server(): _broadcast_lobby_state()
 
 func _toggle_ready() -> void:
     ready = not ready
@@ -101,9 +138,11 @@ func _cycle_team() -> void:
     _submit_settings()
 
 func _cycle_map() -> void:
-    if not multiplayer.is_server() and multiplayer.multiplayer_peer != null:
+    if multiplayer.multiplayer_peer == null or not multiplayer.is_server():
         return
     selected_map = (selected_map + 1) % maps.size()
+    if game != null:
+        game.set("map_index", selected_map)
     _broadcast_lobby_state()
     _refresh()
 
@@ -117,29 +156,28 @@ func _submit_settings() -> void:
 
 @rpc("any_peer", "reliable")
 func submit_player(data: Dictionary) -> void:
-    if not multiplayer.is_server():
-        return
+    if not multiplayer.is_server(): return
     var id := multiplayer.get_remote_sender_id()
-    if players.size() >= MAX_PLAYERS and not players.has(id):
-        return
-    players[id] = data
+    if players.size() >= MAX_PLAYERS and not players.has(id): return
+    players[id] = data.duplicate(true)
     _broadcast_player_state()
 
 @rpc("authority", "reliable")
 func receive_lobby_state(state: Dictionary, map_id: int, started: bool) -> void:
-    players = state
+    players = state.duplicate(true)
     selected_map = clampi(map_id, 0, maps.size() - 1)
     host_started = started
+    if game != null:
+        game.set("map_index", selected_map)
     _refresh()
     if started:
-        _close_lobby()
+        _start_gameplay()
 
 func _broadcast_player_state() -> void:
-    if not multiplayer.is_server():
-        return
-    _broadcast_lobby_state()
+    if multiplayer.is_server(): _broadcast_lobby_state()
 
 func _broadcast_lobby_state() -> void:
+    if not multiplayer.is_server(): return
     var state := players.duplicate(true)
     for id in multiplayer.get_peers():
         rpc_id(id, "receive_lobby_state", state, selected_map, host_started)
@@ -150,25 +188,38 @@ func _send_lobby_state(id: int) -> void:
 
 func _host_start() -> void:
     if multiplayer.multiplayer_peer == null:
-        status_label.text = "استضف اللعبة أولاً من زر استضافة LAN"
+        status_label.text = "استضف اللعبة أولاً"
         return
     if not multiplayer.is_server():
         status_label.text = "فقط المضيف يستطيع بدء المباراة"
         return
+    if players.is_empty():
+        players[1] = _player_data()
     for data in players.values():
         if not bool(data.get("ready", false)):
             status_label.text = "لا يمكن البدء: يوجد لاعب غير جاهز"
             return
     host_started = true
+    if game != null:
+        game.set("map_index", selected_map)
     _broadcast_lobby_state()
-    _close_lobby()
+    _start_gameplay()
+
+func _start_gameplay() -> void:
+    if game != null:
+        game.set_process(true)
+        game.set_process_unhandled_input(true)
+        game.set("map_index", selected_map)
+    lobby_panel.visible = false
 
 func _close_lobby() -> void:
     lobby_panel.visible = false
+    if game != null:
+        game.set_process(true)
+        game.set_process_unhandled_input(true)
 
 func _refresh() -> void:
-    if list_label == null:
-        return
+    if list_label == null: return
     var text := "اللاعبون (%d/%d)\n\n" % [players.size(), MAX_PLAYERS]
     for id in players.keys():
         var d: Dictionary = players[id]
@@ -178,8 +229,3 @@ func _refresh() -> void:
     map_label.text = "الخريطة: " + maps[selected_map]
     faction_label.text = "الفصيل: " + factions[selected_faction]
     team_label.text = "الفريق: %d" % selected_team
-
-func can_enter_match() -> bool:
-    if multiplayer.multiplayer_peer == null:
-        return true
-    return host_started
