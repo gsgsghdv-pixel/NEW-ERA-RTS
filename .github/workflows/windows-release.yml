@@ -49,6 +49,14 @@ jobs:
           Write-Host "Godot validation exit code: $($p.ExitCode)"
           if ($p.ExitCode -ne 0) { throw "Godot project validation failed with exit code $($p.ExitCode)" }
 
+      - name: Gameplay smoke test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $p = Start-Process -FilePath "$env:GODOT" -ArgumentList @('--headless','--path','.','--script','scripts/gameplay_smoke.gd') -Wait -PassThru -NoNewWindow
+          Write-Host "Gameplay smoke exit code: $($p.ExitCode)"
+          if ($p.ExitCode -ne 0) { throw "Gameplay smoke test failed" }
+
       - name: Export Windows x86_64
         shell: pwsh
         run: |
