@@ -6,6 +6,7 @@ on:
     branches: [ main ]
     tags: [ "v*" ]
 
+# CI is intentionally gated: LAN E2E must pass before Windows export.
 jobs:
   build-windows:
     runs-on: windows-2025
@@ -13,7 +14,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Download Godot 4.7.2
         shell: pwsh
         run: |
@@ -24,7 +24,6 @@ jobs:
           $exe = Get-ChildItem "$env:RUNNER_TEMP\godot" -Filter "Godot_v4.7.2-stable_win64.exe" -Recurse | Select-Object -First 1
           if (-not $exe) { throw "Godot executable not found" }
           "GODOT=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
-
       - name: Download export templates
         shell: pwsh
         run: |
@@ -36,11 +35,9 @@ jobs:
           Expand-Archive "$env:RUNNER_TEMP\templates.tpz" -DestinationPath "$env:RUNNER_TEMP\templates" -Force
           $root = Get-ChildItem "$env:RUNNER_TEMP\templates" -Directory | Select-Object -First 1
           if ($root) { Copy-Item "$($root.FullName)\*" $dest -Recurse -Force } else { Copy-Item "$env:RUNNER_TEMP\templates\*" $dest -Recurse -Force }
-
       - name: Static QA
         shell: pwsh
         run: python scripts\qa_check.py
-
       - name: Validate project
         shell: pwsh
         run: |
@@ -50,7 +47,6 @@ jobs:
           $exitCode = $LASTEXITCODE
           $output = Get-Content $log -Raw -ErrorAction SilentlyContinue
           if ($exitCode -ne 0 -or $output -match "SCRIPT ERROR|Parse Error|Failed to load script") { throw "Godot project validation failed" }
-
       - name: Gameplay smoke test
         shell: pwsh
         run: |
@@ -60,11 +56,9 @@ jobs:
           $exitCode = $LASTEXITCODE
           $output = Get-Content $log -Raw -ErrorAction SilentlyContinue
           if ($exitCode -ne 0 -or $output -match "SCRIPT ERROR|Parse Error|Failed to load script") { throw "Gameplay smoke test failed" }
-
       - name: Deep systems QA
         shell: pwsh
         run: python scripts\deep_system_qa.py
-
       - name: LAN two-process E2E smoke test
         shell: pwsh
         run: |
@@ -76,40 +70,23 @@ jobs:
           Remove-Item $hostLog,$hostErr,$clientLog,$clientErr -Force -ErrorAction SilentlyContinue
           $hostProc = Start-Process -FilePath "$env:GODOT" -ArgumentList @('--headless','--path','.','--script','scripts/lan_e2e_smoke.gd','--','--role=host') -PassThru -RedirectStandardOutput $hostLog -RedirectStandardError $hostErr
           Start-Sleep -Seconds 2
-          if ($hostProc.HasExited) {
-            Write-Host "=== HOST STDOUT ==="; Get-Content $hostLog -ErrorAction SilentlyContinue
-            Write-Host "=== HOST STDERR ==="; Get-Content $hostErr -ErrorAction SilentlyContinue
-            throw "LAN host exited before client started: $($hostProc.ExitCode)"
-          }
+          if ($hostProc.HasExited) { Get-Content $hostLog,$hostErr -ErrorAction SilentlyContinue; throw "LAN host exited early: $($hostProc.ExitCode)" }
           $clientProc = Start-Process -FilePath "$env:GODOT" -ArgumentList @('--headless','--path','.','--script','scripts/lan_e2e_smoke.gd','--','--role=client') -PassThru -RedirectStandardOutput $clientLog -RedirectStandardError $clientErr
           if (-not $clientProc.WaitForExit(25000)) {
-            Write-Host "=== HOST STDOUT ==="; Get-Content $hostLog -ErrorAction SilentlyContinue
-            Write-Host "=== HOST STDERR ==="; Get-Content $hostErr -ErrorAction SilentlyContinue
-            Write-Host "=== CLIENT STDOUT ==="; Get-Content $clientLog -ErrorAction SilentlyContinue
-            Write-Host "=== CLIENT STDERR ==="; Get-Content $clientErr -ErrorAction SilentlyContinue
+            Write-Host "=== HOST ==="; Get-Content $hostLog,$hostErr -ErrorAction SilentlyContinue
+            Write-Host "=== CLIENT ==="; Get-Content $clientLog,$clientErr -ErrorAction SilentlyContinue
             Stop-Process -Id $clientProc.Id -Force -ErrorAction SilentlyContinue
             Stop-Process -Id $hostProc.Id -Force -ErrorAction SilentlyContinue
             throw "LAN client E2E timed out"
           }
-          if (-not $hostProc.WaitForExit(5000)) {
-            Write-Host "=== HOST STDOUT ==="; Get-Content $hostLog -ErrorAction SilentlyContinue
-            Write-Host "=== HOST STDERR ==="; Get-Content $hostErr -ErrorAction SilentlyContinue
-            Write-Host "=== CLIENT STDOUT ==="; Get-Content $clientLog -ErrorAction SilentlyContinue
-            Write-Host "=== CLIENT STDERR ==="; Get-Content $clientErr -ErrorAction SilentlyContinue
-            Stop-Process -Id $hostProc.Id -Force -ErrorAction SilentlyContinue
-            throw "LAN host E2E timed out"
-          }
-          Get-Content $hostLog -ErrorAction SilentlyContinue
-          Get-Content $hostErr -ErrorAction SilentlyContinue
-          Get-Content $clientLog -ErrorAction SilentlyContinue
-          Get-Content $clientErr -ErrorAction SilentlyContinue
+          $hostProc.WaitForExit(5000)
           $allLanOutput = ((Get-Content $hostLog -Raw -ErrorAction SilentlyContinue) + (Get-Content $hostErr -Raw -ErrorAction SilentlyContinue) + (Get-Content $clientLog -Raw -ErrorAction SilentlyContinue) + (Get-Content $clientErr -Raw -ErrorAction SilentlyContinue))
+          Write-Host $allLanOutput
           if ($allLanOutput -match "SCRIPT ERROR|Parse Error|Failed to load script") { throw "LAN E2E script/parse error detected" }
-          if ($clientProc.ExitCode -ne 0) { throw "LAN client E2E failed with exit code $($clientProc.ExitCode)" }
-          if ($hostProc.ExitCode -ne 0) { throw "LAN host E2E failed with exit code $($hostProc.ExitCode)" }
+          if ($clientProc.ExitCode -ne 0) { throw "LAN client E2E failed: $($clientProc.ExitCode)" }
+          if ($hostProc.ExitCode -ne 0) { throw "LAN host E2E failed: $($hostProc.ExitCode)" }
           if ($allLanOutput -notmatch "LAN E2E PASS") { throw "LAN E2E PASS marker not found" }
           Write-Host "LAN two-process E2E: PASS"
-
       - name: Export Windows x86_64
         shell: pwsh
         run: |
@@ -122,7 +99,6 @@ jobs:
           if ($exitCode -ne 0 -or $output -match "SCRIPT ERROR|Parse Error|Failed to load script") { throw "Windows export failed" }
           if (-not (Test-Path "build\NEW_ERA_RTS.exe")) { throw "EXE was not produced" }
           if (-not (Test-Path "build\NEW_ERA_RTS.pck")) { throw "PCK was not produced" }
-
       - name: Runtime smoke test
         shell: pwsh
         run: |
@@ -130,29 +106,19 @@ jobs:
           $p = Start-Process -FilePath "build\NEW_ERA_RTS.exe" -ArgumentList @('--headless','--quit-after','3') -PassThru -NoNewWindow
           if (-not $p.WaitForExit(15000)) { Stop-Process -Id $p.Id -Force; throw "Runtime smoke test timed out" }
           if ($p.ExitCode -ne 0) { throw "Runtime smoke test failed" }
-
       - name: Generate checksums
         shell: pwsh
         run: |
-          $ErrorActionPreference = "Stop"
           Get-FileHash "build\NEW_ERA_RTS.exe" -Algorithm SHA256 | Format-List | Out-File "build\SHA256_EXE.txt"
           Get-FileHash "build\NEW_ERA_RTS.pck" -Algorithm SHA256 | Format-List | Out-File "build\SHA256_PCK.txt"
-          Get-FileHash "build\NEW_ERA_RTS.exe" -Algorithm SHA256
-          Get-FileHash "build\NEW_ERA_RTS.pck" -Algorithm SHA256
-
       - name: Package
         shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          Compress-Archive -Path "build\*" -DestinationPath "NEW_ERA_RTS_Windows_x86_64.zip" -Force
-          if (-not (Test-Path "NEW_ERA_RTS_Windows_x86_64.zip")) { throw "ZIP package was not produced" }
-
+        run: Compress-Archive -Path "build\*" -DestinationPath "NEW_ERA_RTS_Windows_x86_64.zip" -Force
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
         with:
           name: NEW_ERA_RTS-Windows-x86_64
           path: build/NEW_ERA_RTS.exe
-
       - name: Upload Windows package
         uses: actions/upload-artifact@v4
         with:
