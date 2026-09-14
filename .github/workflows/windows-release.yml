@@ -57,6 +57,10 @@ jobs:
           Write-Host "Gameplay smoke exit code: $($p.ExitCode)"
           if ($p.ExitCode -ne 0) { throw "Gameplay smoke test failed" }
 
+      - name: Deep systems QA
+        shell: pwsh
+        run: python scripts\deep_system_qa.py
+
       - name: Export Windows x86_64
         shell: pwsh
         run: |
