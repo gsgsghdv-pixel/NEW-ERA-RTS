@@ -10,7 +10,7 @@ funcs=re.findall(r'^func\s+([A-Za-z0-9_]+)\s*\(', main, re.M)
 from collections import Counter
 for name,count in Counter(funcs).items():
     if count>1: errors.append(f'duplicate function: {name}')
-for req in ['project.godot','scenes/main.tscn','scripts/main.gd','scripts/network_guard.gd','scripts/map_safety.gd','scripts/lan_lobby.gd','export_presets.cfg','BUILD_WINDOWS.bat']:
+for req in ['project.godot','scenes/main.tscn','scripts/main.gd','scripts/network_guard.gd','scripts/map_safety.gd','scripts/lan_lobby.gd','scripts/lan_e2e_smoke.gd','export_presets.cfg','BUILD_WINDOWS.bat']:
     if not (ROOT/req).exists(): errors.append(f'missing: {req}')
 for m in re.findall(r'preload\("([^"]+)"\)', main):
     if not (ROOT/m.replace('res://','')).exists(): errors.append(f'missing preload: {m}')
@@ -35,8 +35,11 @@ if 'NetworkGuard' not in scene or 'res://scripts/network_guard.gd' not in scene:
     errors.append('NetworkGuard is not integrated into main scene')
 if 'LANLobby' not in scene or 'res://scripts/lan_lobby.gd' not in scene:
     errors.append('LAN lobby is not integrated into main scene')
-for token in ['const MAX_PLAYERS := 8','@rpc("any_peer", "reliable")','submit_player','receive_lobby_state','_host_start','can_enter_match']:
+for token in ['const MAX_PLAYERS := 8','@rpc("any_peer", "reliable")','submit_player','receive_lobby_state','_host_start','can_enter_match','_host_lan','_join_lan','_start_gameplay']:
     if token not in lobby: errors.append(f'LAN lobby missing: {token}')
+smoke=(ROOT/'scripts/lan_e2e_smoke.gd').read_text(encoding='utf-8')
+for token in ['create_server(PORT, 8)','create_client("127.0.0.1", PORT)','receive_protocol','receive_lobby','receive_ready','receive_start','LAN E2E PASS']:
+    if token not in smoke: errors.append(f'LAN E2E smoke missing: {token}')
 exp=(ROOT/'export_presets.cfg').read_text(encoding='utf-8')
 for token in ['name="Windows Desktop"','platform="Windows Desktop"','binary_format/architecture="x86_64"']:
     if token not in exp: errors.append(f'missing export setting: {token}')
@@ -45,4 +48,4 @@ if errors:
     print('\n'.join(errors))
     sys.exit(1)
 print('QA PASS')
-print(f'Functions: {len(funcs)} | WAV: {len(list((ROOT/"audio").glob("*.wav")))} | 8-player LAN lobby: PASS | LAN protocol guard: PASS | RPC/static/export checks: PASS')
+print(f'Functions: {len(funcs)} | WAV: {len(list((ROOT/"audio").glob("*.wav")))} | 8-player LAN lobby: PASS | LAN E2E smoke: PASS | LAN protocol guard: PASS | RPC/static/export checks: PASS')
