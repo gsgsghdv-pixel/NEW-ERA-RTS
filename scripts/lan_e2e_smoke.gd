@@ -17,7 +17,7 @@ class LanTestPeer extends Node:
         role = test_role
         process_mode = Node.PROCESS_MODE_ALWAYS
         set_multiplayer_authority(1)
-        mp = get_tree().get_multiplayer()
+        mp = multiplayer
         if mp == null:
             push_error("LAN E2E: MultiplayerAPI unavailable")
             get_tree().quit(6)
