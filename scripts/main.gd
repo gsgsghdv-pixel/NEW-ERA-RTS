@@ -47,6 +47,7 @@ func _ready() -> void:
     _spawn_building("مقر",Vector3(-15,0,18),0,1)
     _spawn_building("ثكنة",Vector3(-8,0,20),0,1)
     _spawn_building("مصنع",Vector3(-2,0,20),0,1)
+    _spawn_building("مقر",Vector3(18,0,-18),1,0)
     _spawn_enemy()
     multiplayer.peer_connected.connect(_on_peer_connected)
     multiplayer.peer_disconnected.connect(_on_peer_disconnected)
