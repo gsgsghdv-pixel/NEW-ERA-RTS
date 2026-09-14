@@ -146,7 +146,15 @@ func _initialize() -> void:
         push_error("LAN E2E: missing --role=host|client")
         quit(2)
         return
+    call_deferred("_start_test", role)
+
+func _start_test(role: String) -> void:
+    if root == null:
+        push_error("LAN E2E: SceneTree root unavailable after initialization")
+        quit(7)
+        return
     test_peer = LanTestPeer.new()
     test_peer.name = "LanTestPeer"
     root.add_child(test_peer)
+    await process_frame
     test_peer.setup(role)
