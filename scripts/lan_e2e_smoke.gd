@@ -7,6 +7,7 @@ const TIMEOUT_MS: int = 15000
 class LanTestPeer extends Node:
     var role: String = ""
     var peer: ENetMultiplayerPeer
+    var mp: MultiplayerAPI
     var phase: int = 0
     var deadline: int = 0
     var passed: bool = false
@@ -15,11 +16,16 @@ class LanTestPeer extends Node:
     func setup(test_role: String) -> void:
         role = test_role
         process_mode = Node.PROCESS_MODE_ALWAYS
-        multiplayer.peer_connected.connect(_on_peer_connected)
-        multiplayer.peer_disconnected.connect(_on_peer_disconnected)
+        mp = get_tree().get_multiplayer()
+        if mp == null:
+            push_error("LAN E2E: default MultiplayerAPI unavailable")
+            get_tree().quit(6)
+            return
+        mp.peer_connected.connect(_on_peer_connected)
+        mp.peer_disconnected.connect(_on_peer_disconnected)
         if role == "client":
-            multiplayer.connected_to_server.connect(_on_connected_to_server)
-            multiplayer.connection_failed.connect(_on_connection_failed)
+            mp.connected_to_server.connect(_on_connected_to_server)
+            mp.connection_failed.connect(_on_connection_failed)
         peer = ENetMultiplayerPeer.new()
         if role == "host":
             var err: Error = peer.create_server(PORT, 8)
@@ -27,7 +33,7 @@ class LanTestPeer extends Node:
                 push_error("LAN E2E host create_server failed: %s" % err)
                 get_tree().quit(3)
                 return
-            multiplayer.multiplayer_peer = peer
+            mp.multiplayer_peer = peer
             deadline = Time.get_ticks_msec() + TIMEOUT_MS
             print("LAN E2E HOST READY port=%d" % PORT)
         else:
@@ -36,7 +42,7 @@ class LanTestPeer extends Node:
                 push_error("LAN E2E client create_client failed: %s" % err)
                 get_tree().quit(4)
                 return
-            multiplayer.multiplayer_peer = peer
+            mp.multiplayer_peer = peer
             deadline = Time.get_ticks_msec() + TIMEOUT_MS
             print("LAN E2E CLIENT CONNECTING")
 
@@ -44,7 +50,7 @@ class LanTestPeer extends Node:
         if passed:
             return
         if deadline > 0 and Time.get_ticks_msec() > deadline:
-            push_error("LAN E2E timeout phase=%d role=%s connected=%s peers=%d" % [phase, role, connected, multiplayer.get_peers().size()])
+            push_error("LAN E2E timeout phase=%d role=%s connected=%s peers=%d" % [phase, role, connected, mp.get_peers().size()])
             get_tree().quit(10)
 
     func _on_connected_to_server() -> void:
@@ -68,12 +74,12 @@ class LanTestPeer extends Node:
 
     @rpc("any_peer", "reliable")
     func receive_protocol(remote: String) -> void:
-        var sender: int = multiplayer.get_remote_sender_id()
+        var sender: int = mp.get_remote_sender_id()
         print("LAN E2E %s: protocol received from=%d value=%s" % [role.to_upper(), sender, remote])
         if remote != PROTOCOL:
             push_error("LAN E2E protocol mismatch")
-            if multiplayer.is_server() and sender != 0:
-                multiplayer.disconnect_peer(sender)
+            if mp.is_server() and sender != 0:
+                mp.multiplayer_peer.disconnect_peer(sender)
             get_tree().quit(11)
             return
         if role == "host" and sender > 1:
@@ -103,7 +109,7 @@ class LanTestPeer extends Node:
     func receive_ready(is_ready: bool) -> void:
         if role != "host":
             return
-        var sender: int = multiplayer.get_remote_sender_id()
+        var sender: int = mp.get_remote_sender_id()
         if sender > 1 and is_ready:
             phase = 4
             rpc_id(sender, "receive_start", 0)
