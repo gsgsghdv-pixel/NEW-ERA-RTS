@@ -51,12 +51,11 @@ func _initialize() -> void:
     game._cycle_ai()
     _check(game.difficulty != old_ai, "AI difficulty cycling")
 
-    var saved_resources: int = game.resources
     game.resources = 777
     game._save()
     game.resources = 1
     game._load()
-    _check(game.resources == saved_resources, "save/load resources")
+    _check(game.resources == 777, "save/load resources")
 
     var guard: Node = game.get_node_or_null("NetworkGuard") as Node
     _check(guard != null, "network guard node")
