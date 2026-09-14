@@ -48,9 +48,8 @@ jobs:
           $log = Join-Path $env:RUNNER_TEMP "godot-validate.log"
           & "$env:GODOT" --headless --path . --editor --quit 2>&1 | Tee-Object -FilePath $log
           $exitCode = $LASTEXITCODE
-          Write-Host "Godot validation exit code: $exitCode"
           $output = Get-Content $log -Raw -ErrorAction SilentlyContinue
-          if ($exitCode -ne 0 -or $output -match "SCRIPT ERROR|Parse Error|Failed to load script") { throw "Godot project validation failed: script/parse error detected" }
+          if ($exitCode -ne 0 -or $output -match "SCRIPT ERROR|Parse Error|Failed to load script") { throw "Godot project validation failed" }
 
       - name: Gameplay smoke test
         shell: pwsh
@@ -59,9 +58,8 @@ jobs:
           $log = Join-Path $env:RUNNER_TEMP "gameplay-smoke.log"
           & "$env:GODOT" --headless --path . --script scripts/gameplay_smoke.gd 2>&1 | Tee-Object -FilePath $log
           $exitCode = $LASTEXITCODE
-          Write-Host "Gameplay smoke exit code: $exitCode"
           $output = Get-Content $log -Raw -ErrorAction SilentlyContinue
-          if ($exitCode -ne 0 -or $output -match "SCRIPT ERROR|Parse Error|Failed to load script") { throw "Gameplay smoke test failed: script/parse error detected" }
+          if ($exitCode -ne 0 -or $output -match "SCRIPT ERROR|Parse Error|Failed to load script") { throw "Gameplay smoke test failed" }
 
       - name: Deep systems QA
         shell: pwsh
@@ -72,20 +70,39 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $hostLog = Join-Path $env:RUNNER_TEMP "lan-host.log"
+          $hostErr = "$hostLog.err"
           $clientLog = Join-Path $env:RUNNER_TEMP "lan-client.log"
-          $hostProc = Start-Process -FilePath "$env:GODOT" -ArgumentList @('--headless','--path','.','--script','scripts/lan_e2e_smoke.gd','--','--role=host') -PassThru -RedirectStandardOutput $hostLog -RedirectStandardError "$hostLog.err"
+          $clientErr = "$clientLog.err"
+          $hostProc = Start-Process -FilePath "$env:GODOT" -ArgumentList @('--headless','--path','.','--script','scripts/lan_e2e_smoke.gd','--','--role=host') -PassThru -RedirectStandardOutput $hostLog -RedirectStandardError $hostErr
           Start-Sleep -Seconds 2
-          $clientProc = Start-Process -FilePath "$env:GODOT" -ArgumentList @('--headless','--path','.','--script','scripts/lan_e2e_smoke.gd','--','--role=client') -PassThru -RedirectStandardOutput $clientLog -RedirectStandardError "$clientLog.err"
-          if (-not $clientProc.WaitForExit(15000)) { Stop-Process -Id $clientProc.Id -Force; throw "LAN client E2E timed out" }
-          if (-not $hostProc.WaitForExit(5000)) { Stop-Process -Id $hostProc.Id -Force; throw "LAN host E2E timed out" }
+          if ($hostProc.HasExited) { Get-Content $hostLog -ErrorAction SilentlyContinue; Get-Content $hostErr -ErrorAction SilentlyContinue; throw "LAN host exited before client started: $($hostProc.ExitCode)" }
+          $clientProc = Start-Process -FilePath "$env:GODOT" -ArgumentList @('--headless','--path','.','--script','scripts/lan_e2e_smoke.gd','--','--role=client') -PassThru -RedirectStandardOutput $clientLog -RedirectStandardError $clientErr
+          if (-not $clientProc.WaitForExit(15000)) {
+            Get-Content $hostLog -ErrorAction SilentlyContinue
+            Get-Content $hostErr -ErrorAction SilentlyContinue
+            Get-Content $clientLog -ErrorAction SilentlyContinue
+            Get-Content $clientErr -ErrorAction SilentlyContinue
+            Stop-Process -Id $clientProc.Id -Force -ErrorAction SilentlyContinue
+            Stop-Process -Id $hostProc.Id -Force -ErrorAction SilentlyContinue
+            throw "LAN client E2E timed out"
+          }
+          if (-not $hostProc.WaitForExit(5000)) {
+            Get-Content $hostLog -ErrorAction SilentlyContinue
+            Get-Content $hostErr -ErrorAction SilentlyContinue
+            Get-Content $clientLog -ErrorAction SilentlyContinue
+            Get-Content $clientErr -ErrorAction SilentlyContinue
+            Stop-Process -Id $hostProc.Id -Force -ErrorAction SilentlyContinue
+            throw "LAN host E2E timed out"
+          }
           Get-Content $hostLog -ErrorAction SilentlyContinue
-          Get-Content "$hostLog.err" -ErrorAction SilentlyContinue
+          Get-Content $hostErr -ErrorAction SilentlyContinue
           Get-Content $clientLog -ErrorAction SilentlyContinue
-          Get-Content "$clientLog.err" -ErrorAction SilentlyContinue
-          $allLanOutput = ((Get-Content $hostLog -Raw -ErrorAction SilentlyContinue) + (Get-Content "$hostLog.err" -Raw -ErrorAction SilentlyContinue) + (Get-Content $clientLog -Raw -ErrorAction SilentlyContinue) + (Get-Content "$clientLog.err" -Raw -ErrorAction SilentlyContinue))
-          if ($allLanOutput -match "SCRIPT ERROR|Parse Error|Failed to load script") { throw "LAN E2E failed: script/parse error detected" }
+          Get-Content $clientErr -ErrorAction SilentlyContinue
+          $allLanOutput = ((Get-Content $hostLog -Raw -ErrorAction SilentlyContinue) + (Get-Content $hostErr -Raw -ErrorAction SilentlyContinue) + (Get-Content $clientLog -Raw -ErrorAction SilentlyContinue) + (Get-Content $clientErr -Raw -ErrorAction SilentlyContinue))
+          if ($allLanOutput -match "SCRIPT ERROR|Parse Error|Failed to load script") { throw "LAN E2E script/parse error detected" }
           if ($clientProc.ExitCode -ne 0) { throw "LAN client E2E failed with exit code $($clientProc.ExitCode)" }
           if ($hostProc.ExitCode -ne 0) { throw "LAN host E2E failed with exit code $($hostProc.ExitCode)" }
+          if ($allLanOutput -notmatch "LAN E2E PASS") { throw "LAN E2E PASS marker not found" }
           Write-Host "LAN two-process E2E: PASS"
 
       - name: Export Windows x86_64
@@ -96,10 +113,8 @@ jobs:
           $log = Join-Path $env:RUNNER_TEMP "godot-export.log"
           & "$env:GODOT" --headless --path . --export-release "Windows Desktop" "build\NEW_ERA_RTS.exe" 2>&1 | Tee-Object -FilePath $log
           $exitCode = $LASTEXITCODE
-          Write-Host "Godot export exit code: $exitCode"
-          Get-ChildItem build -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length
           $output = Get-Content $log -Raw -ErrorAction SilentlyContinue
-          if ($exitCode -ne 0 -or $output -match "SCRIPT ERROR|Parse Error|Failed to load script") { throw "Windows export failed: script/parse error detected" }
+          if ($exitCode -ne 0 -or $output -match "SCRIPT ERROR|Parse Error|Failed to load script") { throw "Windows export failed" }
           if (-not (Test-Path "build\NEW_ERA_RTS.exe")) { throw "EXE was not produced" }
           if (-not (Test-Path "build\NEW_ERA_RTS.pck")) { throw "PCK was not produced" }
 
@@ -108,11 +123,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $p = Start-Process -FilePath "build\NEW_ERA_RTS.exe" -ArgumentList @('--headless','--quit-after','3') -PassThru -NoNewWindow
-          if (-not $p.WaitForExit(15000)) {
-            Stop-Process -Id $p.Id -Force
-            throw "Runtime smoke test timed out"
-          }
-          Write-Host "Runtime smoke test exit code: $($p.ExitCode)"
+          if (-not $p.WaitForExit(15000)) { Stop-Process -Id $p.Id -Force; throw "Runtime smoke test timed out" }
           if ($p.ExitCode -ne 0) { throw "Runtime smoke test failed" }
 
       - name: Generate checksums
