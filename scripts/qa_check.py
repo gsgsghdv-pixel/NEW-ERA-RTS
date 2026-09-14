@@ -4,12 +4,13 @@ ROOT=Path(__file__).resolve().parents[1]
 main=(ROOT/'scripts/main.gd').read_text(encoding='utf-8')
 guard=(ROOT/'scripts/network_guard.gd').read_text(encoding='utf-8')
 scene=(ROOT/'scenes/main.tscn').read_text(encoding='utf-8')
+lobby=(ROOT/'scripts/lan_lobby.gd').read_text(encoding='utf-8')
 errors=[]
 funcs=re.findall(r'^func\s+([A-Za-z0-9_]+)\s*\(', main, re.M)
 from collections import Counter
 for name,count in Counter(funcs).items():
     if count>1: errors.append(f'duplicate function: {name}')
-for req in ['project.godot','scenes/main.tscn','scripts/main.gd','scripts/network_guard.gd','scripts/map_safety.gd','export_presets.cfg','BUILD_WINDOWS.bat']:
+for req in ['project.godot','scenes/main.tscn','scripts/main.gd','scripts/network_guard.gd','scripts/map_safety.gd','scripts/lan_lobby.gd','export_presets.cfg','BUILD_WINDOWS.bat']:
     if not (ROOT/req).exists(): errors.append(f'missing: {req}')
 for m in re.findall(r'preload\("([^"]+)"\)', main):
     if not (ROOT/m.replace('res://','')).exists(): errors.append(f'missing preload: {m}')
@@ -28,12 +29,14 @@ for m in re.finditer(r'@rpc\(([^)]*)\)\s*\nfunc\s+([A-Za-z0-9_]+)', main):
     args=m.group(1)
     if not any(x in args for x in ['authority','any_peer','call_local','call_remote']):
         errors.append(f'RPC missing peer mode: {m.group(2)}')
-# LAN protocol guard checks.
 for token in ['const PROTOCOL_VERSION := "NEWERA-RTS-LAN-1"','_protocol_challenge','_receive_protocol','_protocol_accepted','_protocol_rejected','can_start_match']:
     if token not in guard: errors.append(f'LAN guard missing: {token}')
 if 'NetworkGuard' not in scene or 'res://scripts/network_guard.gd' not in scene:
     errors.append('NetworkGuard is not integrated into main scene')
-# Windows preset sanity.
+if 'LANLobby' not in scene or 'res://scripts/lan_lobby.gd' not in scene:
+    errors.append('LAN lobby is not integrated into main scene')
+for token in ['const MAX_PLAYERS := 8','@rpc("any_peer", "reliable")','submit_player','receive_lobby_state','_host_start','can_enter_match']:
+    if token not in lobby: errors.append(f'LAN lobby missing: {token}')
 exp=(ROOT/'export_presets.cfg').read_text(encoding='utf-8')
 for token in ['name="Windows Desktop"','platform="Windows Desktop"','binary_format/architecture="x86_64"']:
     if token not in exp: errors.append(f'missing export setting: {token}')
@@ -42,4 +45,4 @@ if errors:
     print('\n'.join(errors))
     sys.exit(1)
 print('QA PASS')
-print(f'Functions: {len(funcs)} | WAV: {len(list((ROOT/"audio").glob("*.wav")))} | LAN protocol guard: PASS | RPC/static/export checks: PASS')
+print(f'Functions: {len(funcs)} | WAV: {len(list((ROOT/"audio").glob("*.wav")))} | 8-player LAN lobby: PASS | LAN protocol guard: PASS | RPC/static/export checks: PASS')
