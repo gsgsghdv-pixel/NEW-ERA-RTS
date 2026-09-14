@@ -1,12 +1,12 @@
 extends SceneTree
 
-const PORT := 27125
+const PORT: int = 27125
 const PROTOCOL := "NEWERA-RTS-LAN-1"
-const TIMEOUT_MS := 15000
+const TIMEOUT_MS: int = 15000
 
 class LanTestPeer extends Node:
     var role: String = ""
-    var peer := ENetMultiplayerPeer.new()
+    var peer: ENetMultiplayerPeer
     var phase: int = 0
     var deadline: int = 0
     var passed: bool = false
@@ -20,6 +20,7 @@ class LanTestPeer extends Node:
         if role == "client":
             multiplayer.connected_to_server.connect(_on_connected_to_server)
             multiplayer.connection_failed.connect(_on_connection_failed)
+        peer = ENetMultiplayerPeer.new()
         if role == "host":
             var err: Error = peer.create_server(PORT, 8)
             if err != OK:
@@ -75,13 +76,16 @@ class LanTestPeer extends Node:
                 multiplayer.disconnect_peer(sender)
             get_tree().quit(11)
             return
-        if role == "host" and sender != 0:
+        if role == "host" and sender > 1:
             phase = 2
             rpc_id(sender, "receive_lobby", {"players": 2, "map": 0})
             print("LAN E2E HOST: lobby state sent")
         elif role == "client" and sender == 1:
             phase = 2
             print("LAN E2E CLIENT: protocol accepted")
+            rpc_id(1, "receive_ready", true)
+            phase = 3
+            print("LAN E2E CLIENT: ready sent")
 
     @rpc("authority", "reliable")
     func receive_lobby(state: Dictionary) -> void:
@@ -100,7 +104,7 @@ class LanTestPeer extends Node:
         if role != "host":
             return
         var sender: int = multiplayer.get_remote_sender_id()
-        if sender != 0 and is_ready:
+        if sender > 1 and is_ready:
             phase = 4
             rpc_id(sender, "receive_start", 0)
             print("LAN E2E HOST: client ready; match start sent")
@@ -127,9 +131,9 @@ var test_peer: LanTestPeer
 
 func _initialize() -> void:
     var role: String = ""
-    for a in OS.get_cmdline_user_args():
-        if a.begins_with("--role="):
-            role = a.substr(7)
+    for arg in OS.get_cmdline_user_args():
+        if arg.begins_with("--role="):
+            role = arg.substr(7).strip_edges().to_lower()
     if role != "host" and role != "client":
         push_error("LAN E2E: missing --role=host|client")
         quit(2)
