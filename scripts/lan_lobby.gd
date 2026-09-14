@@ -11,7 +11,7 @@ var map_label: Label
 var faction_label: Label
 var team_label: Label
 var ip_edit: LineEdit
-var ready := false
+var is_ready := false
 var local_name := "Player"
 var selected_faction := 0
 var selected_team := 1
@@ -118,7 +118,7 @@ func _peer_disconnected(id: int) -> void:
     if multiplayer.is_server(): _broadcast_lobby_state()
 
 func _toggle_ready() -> void:
-    ready = not ready
+    is_ready = not is_ready
     if multiplayer.multiplayer_peer != null and not multiplayer.is_server():
         submit_player.rpc_id(1, _player_data())
     else:
@@ -127,7 +127,7 @@ func _toggle_ready() -> void:
     _refresh()
 
 func _player_data() -> Dictionary:
-    return {"name": local_name, "faction": factions[selected_faction], "team": selected_team, "ready": ready}
+    return {"name": local_name, "faction": factions[selected_faction], "team": selected_team, "ready": is_ready}
 
 func _cycle_faction() -> void:
     selected_faction = (selected_faction + 1) % factions.size()
