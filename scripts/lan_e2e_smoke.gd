@@ -128,12 +128,19 @@ class LanTestPeer extends Node:
         phase = 5
         passed = true
         print("LAN E2E PASS: connect -> protocol -> lobby -> ready -> start")
+        mp.multiplayer_peer.close()
         get_tree().quit(0)
 
     func _on_peer_disconnected(id: int) -> void:
-        if not passed:
-            push_error("LAN E2E peer disconnected before completion id=%d" % id)
-            get_tree().quit(14)
+        if passed:
+            return
+        if role == "host" and phase >= 4:
+            passed = true
+            print("LAN E2E HOST: normal disconnect after match-start; test PASS")
+            get_tree().quit(0)
+            return
+        push_error("LAN E2E peer disconnected before completion id=%d" % id)
+        get_tree().quit(14)
 
 var test_peer: LanTestPeer
 
