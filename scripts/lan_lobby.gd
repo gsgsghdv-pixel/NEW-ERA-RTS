@@ -205,6 +205,16 @@ func _host_start() -> void:
     _broadcast_lobby_state()
     _start_gameplay()
 
+func can_enter_match() -> bool:
+    if not host_started:
+        return false
+    if players.is_empty():
+        return false
+    for data in players.values():
+        if not bool(data.get("ready", false)):
+            return false
+    return true
+
 func _start_gameplay() -> void:
     if game != null:
         game.set_process(true)
