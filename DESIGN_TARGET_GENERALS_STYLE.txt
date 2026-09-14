@@ -1,0 +1,16 @@
+NEW ERA RTS design target
+
+Core target: classic base-building RTS structure and pacing inspired by Generals/Zero Hour.
+- RTS camera with pan, edge movement and zoom
+- resource economy and power
+- construction queue and prerequisites
+- command center, barracks, war factory, airfield, power and defenses
+- infantry, vehicles, artillery and aircraft
+- selection, group movement, attack and combat feedback
+- fog of war and tactical minimap
+- skirmish AI and campaign missions
+- 8-player LAN lobby
+- lightweight Windows x86_64 performance target
+- modern 16:9 presentation and scalable HUD
+
+Implementation goal: reproduce the familiar gameplay structure while adding NEW ERA factions, maps, units, abilities, missions and presentation.
