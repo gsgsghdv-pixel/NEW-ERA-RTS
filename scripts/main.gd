@@ -3,6 +3,7 @@ extends Node3D
 const PORT := 27015
 const MAP_SIZE := 70.0
 const START_RESOURCES := 12000
+const SNAPSHOT_INTERVAL := 0.25
 var resources := START_RESOURCES
 var power := 100
 var kills := 0
@@ -23,6 +24,8 @@ var ip_edit: LineEdit
 var next_id := 1
 var sim_time := 0.0
 var enemy_time := 0.0
+var snapshot_time := 0.0
+var handshake_ok := true
 var maps := ["وادي الأرز","الساحل","الصحراء","المدينة","الحدود"]
 var factions := ["لبنان","الشام","الرافدين","المشرق"]
 var costs := {"جندي":350,"دبابة":900,"مدفعية":1200,"طائرة":1600}
@@ -41,6 +44,8 @@ func _ready() -> void:
     _spawn_building("مصنع",Vector3(-2,0,20),0)
     _spawn_building("مقر",Vector3(18,0,-18),1)
     _spawn_enemy()
+    multiplayer.peer_connected.connect(_on_peer_connected)
+    multiplayer.peer_disconnected.connect(_on_peer_disconnected)
     _update()
 
 func _world() -> void:
@@ -149,6 +154,7 @@ func _button(parent: Control, text: String, y: float, action: Callable) -> void:
 func _process(delta: float) -> void:
     sim_time += delta
     enemy_time += delta
+    snapshot_time += delta
     if enemy_time > max(1.5,4.0-difficulty):
         enemy_time = 0.0
         _enemy_attack()
@@ -157,6 +163,9 @@ func _process(delta: float) -> void:
             var target: Vector3 = u.get_meta("target")
             u.position = u.position.move_toward(target, float(speed.get(u.get_meta("kind"),4.0))*delta)
             if u.position.distance_to(target) < 0.2: u.remove_meta("target")
+    if multiplayer.is_server() and snapshot_time >= SNAPSHOT_INTERVAL:
+        snapshot_time = 0.0
+        _broadcast_snapshot()
     _update()
 
 func _unhandled_input(ev: InputEvent) -> void:
@@ -166,7 +175,13 @@ func _unhandled_input(ev: InputEvent) -> void:
         if m.button_index == MOUSE_BUTTON_LEFT:
             _select_near(world)
         elif m.button_index == MOUSE_BUTTON_RIGHT and not selected.is_empty():
-            for u in selected: u.set_meta("target",world)
+            var ids: Array[int] = []
+            for u in selected:
+                if is_instance_valid(u): ids.append(int(u.get_meta("id",0)))
+            if multiplayer.multiplayer_peer != null and not multiplayer.is_server():
+                if handshake_ok: request_move.rpc_id(1,ids,_safe_pos(world))
+            else:
+                _apply_move(ids,_safe_pos(world))
             _log("تم إصدار أمر الحركة للوحدات المحددة")
     if ev is InputEventKey and ev.pressed and not ev.echo:
         if ev.keycode == KEY_1: _produce("جندي")
@@ -180,18 +195,24 @@ func _mouse_world(pos: Vector2) -> Vector3:
     var t := -from.y/dir.y if abs(dir.y)>0.001 else 0.0
     return from + dir*t
 
+func _safe_pos(p: Vector3) -> Vector3:
+    var limit := MAP_SIZE * 0.5 - 2.0
+    return Vector3(clamp(p.x,-limit,limit),0.0,clamp(p.z,-limit,limit))
+
 func _select_near(p: Vector3) -> void:
     selected.clear()
     for u in units:
         if is_instance_valid(u) and u.position.distance_to(p)<2.8: selected.append(u)
     _log("تم تحديد %d وحدة" % selected.size())
 
-func _spawn_unit(kind: String, pos: Vector3, team: int) -> Node3D:
+func _spawn_unit(kind: String, pos: Vector3, team: int, forced_id: int = -1) -> Node3D:
     var u := Node3D.new()
-    u.name = kind + "_%d" % next_id
-    next_id += 1
-    u.position = pos
-    u.set_meta("kind",kind); u.set_meta("team",team); u.set_meta("hp",float(hp[kind])); u.set_meta("id",next_id)
+    var entity_id := forced_id if forced_id > 0 else next_id
+    if forced_id <= 0: next_id += 1
+    else: next_id = max(next_id,forced_id + 1)
+    u.name = kind + "_%d" % entity_id
+    u.position = _safe_pos(pos)
+    u.set_meta("kind",kind); u.set_meta("team",team); u.set_meta("hp",float(hp.get(kind,100.0))); u.set_meta("id",entity_id)
     var mesh := MeshInstance3D.new()
     var box := BoxMesh.new()
     box.size = Vector3(1.5,1.2,1.5) if kind != "طائرة" else Vector3(2.2,0.4,1.2)
@@ -209,11 +230,14 @@ func _spawn_unit(kind: String, pos: Vector3, team: int) -> Node3D:
 func _spawn_enemy() -> void:
     for i in range(5): _spawn_unit("جندي" if i%2==0 else "دبابة",Vector3(10+i*2,0,-12+i),1)
 
-func _spawn_building(kind: String, pos: Vector3, team: int) -> Node3D:
+func _spawn_building(kind: String, pos: Vector3, team: int, forced_id: int = -1) -> Node3D:
     var b := Node3D.new()
-    b.name = kind
-    b.position = pos
-    b.set_meta("kind",kind); b.set_meta("team",team); b.set_meta("hp",1200.0)
+    var entity_id := forced_id if forced_id > 0 else next_id
+    if forced_id <= 0: next_id += 1
+    else: next_id = max(next_id,forced_id + 1)
+    b.name = kind + "_%d" % entity_id
+    b.position = _safe_pos(pos)
+    b.set_meta("kind",kind); b.set_meta("team",team); b.set_meta("hp",1200.0); b.set_meta("id",entity_id)
     var mesh := MeshInstance3D.new()
     var box := BoxMesh.new()
     box.size = Vector3(4,2.5,4)
@@ -226,15 +250,30 @@ func _spawn_building(kind: String, pos: Vector3, team: int) -> Node3D:
     return b
 
 func _build(kind: String, cost: int) -> void:
+    if not _can_issue_local(): return
+    if multiplayer.multiplayer_peer != null and not multiplayer.is_server():
+        if handshake_ok: request_build.rpc_id(1,kind,cost)
+        return
+    _apply_build(kind,cost)
+
+func _apply_build(kind: String, cost: int) -> void:
     if resources < cost: _log("الموارد غير كافية"); return
     resources -= cost
-    _spawn_building(kind,Vector3(-10+randf()*18,0,10+randf()*8),0)
+    _spawn_building(kind,_safe_pos(Vector3(-10+randf()*18,0,10+randf()*8)),0)
     _log("تم بناء %s" % kind)
 
 func _produce(kind: String) -> void:
+    if not _can_issue_local(): return
+    if multiplayer.multiplayer_peer != null and not multiplayer.is_server():
+        if handshake_ok: request_produce.rpc_id(1,kind)
+        return
+    _apply_produce(kind)
+
+func _apply_produce(kind: String) -> void:
+    if not costs.has(kind): return
     var cost: int = costs[kind]
     if resources < cost: _log("الموارد غير كافية"); return
-    if kind in ["جندي"] and not _has_building("ثكنة"): _log("تحتاج إلى ثكنة"); return
+    if kind == "جندي" and not _has_building("ثكنة"): _log("تحتاج إلى ثكنة"); return
     if kind in ["دبابة","مدفعية","طائرة"] and not _has_building("مصنع"): _log("تحتاج إلى مصنع"); return
     resources -= cost
     var pos := Vector3(-10+randf()*10,0,12+randf()*8)
@@ -254,14 +293,20 @@ func _enemy_attack() -> void:
         units.erase(u); selected.erase(u); u.queue_free(); _log("تحذير: فقدت وحدة")
 
 func _cycle_faction() -> void:
+    if multiplayer.multiplayer_peer != null and not multiplayer.is_server():
+        _log("تغيير الفصيل يتم من المضيف في LAN"); return
     faction = factions[(factions.find(faction)+1)%factions.size()]
     _log("الفصيل: %s" % faction)
 
 func _cycle_ai() -> void:
+    if multiplayer.multiplayer_peer != null and not multiplayer.is_server():
+        _log("تغيير AI يتم من المضيف في LAN"); return
     difficulty = 1 if difficulty>=3 else difficulty+1
     _log("مستوى AI: %d" % difficulty)
 
 func _cycle_map() -> void:
+    if multiplayer.multiplayer_peer != null and not multiplayer.is_server():
+        _log("تغيير الخريطة يتم من المضيف في LAN"); return
     map_index = (map_index+1)%maps.size()
     _log("الخريطة: %s" % maps[map_index])
 
@@ -281,14 +326,132 @@ func _load() -> void:
 func _host() -> void:
     if peer!=null: return
     peer=ENetMultiplayerPeer.new(); var err=peer.create_server(PORT,8)
-    if err==OK: multiplayer.multiplayer_peer=peer; _log("تم فتح LAN على المنفذ 27015")
+    if err==OK:
+        multiplayer.multiplayer_peer=peer
+        handshake_ok=true
+        _log("تم فتح LAN على المنفذ 27015")
     else: _log("فشل LAN: %s" % err)
 
 func _join() -> void:
     if peer!=null: return
     peer=ENetMultiplayerPeer.new(); var err=peer.create_client(ip_edit.text.strip_edges(),PORT)
-    if err==OK: multiplayer.multiplayer_peer=peer; _log("جارٍ الاتصال بالمضيف")
+    if err==OK:
+        multiplayer.multiplayer_peer=peer
+        handshake_ok=false
+        _log("جارٍ الاتصال بالمضيف")
     else: _log("فشل الاتصال: %s" % err)
+
+func _on_peer_connected(id: int) -> void:
+    if multiplayer.is_server():
+        _log("اتصل لاعب LAN: %d" % id)
+        _broadcast_snapshot_to(id)
+
+func _on_peer_disconnected(id: int) -> void:
+    _log("غادر لاعب LAN: %d" % id)
+
+func _can_issue_local() -> bool:
+    if multiplayer.multiplayer_peer == null: return true
+    if multiplayer.is_server(): return true
+    if not handshake_ok:
+        _log("LAN غير جاهز: تحقق من إصدار اللعبة")
+        return false
+    return true
+
+func _unit_state(u: Node3D) -> Dictionary:
+    return {"id":int(u.get_meta("id",0)),"kind":str(u.get_meta("kind","جندي")),"team":int(u.get_meta("team",0)),"hp":float(u.get_meta("hp",100.0)),"pos":[u.position.x,u.position.y,u.position.z]}
+
+func _building_state(b: Node3D) -> Dictionary:
+    return {"id":int(b.get_meta("id",0)),"kind":str(b.get_meta("kind","مقر")),"team":int(b.get_meta("team",0)),"hp":float(b.get_meta("hp",1200.0)),"pos":[b.position.x,b.position.y,b.position.z]}
+
+func _make_snapshot() -> Dictionary:
+    var us: Array = []
+    var bs: Array = []
+    for u in units:
+        if is_instance_valid(u): us.append(_unit_state(u))
+    for b in buildings:
+        if is_instance_valid(b): bs.append(_building_state(b))
+    return {"resources":resources,"power":power,"kills":kills,"wave":wave,"difficulty":difficulty,"faction":faction,"mission":mission,"map":map_index,"units":us,"buildings":bs}
+
+func _broadcast_snapshot() -> void:
+    if multiplayer.is_server(): sync_snapshot.rpc(_make_snapshot())
+
+func _broadcast_snapshot_to(id: int) -> void:
+    if multiplayer.is_server(): sync_snapshot.rpc_id(id,_make_snapshot())
+
+@rpc("authority", "unreliable_ordered")
+func sync_snapshot(state: Dictionary) -> void:
+    resources = int(state.get("resources",resources))
+    power = int(state.get("power",power))
+    kills = int(state.get("kills",kills))
+    wave = int(state.get("wave",wave))
+    difficulty = int(state.get("difficulty",difficulty))
+    faction = str(state.get("faction",faction))
+    mission = int(state.get("mission",mission))
+    map_index = clampi(int(state.get("map",map_index)),0,maps.size()-1)
+    if multiplayer.is_server(): return
+    _apply_unit_snapshot(state.get("units",[]))
+    _apply_building_snapshot(state.get("buildings",[]))
+
+func _apply_unit_snapshot(states: Array) -> void:
+    var wanted := {}
+    for data in states:
+        if typeof(data) != TYPE_DICTIONARY: continue
+        var id := int(data.get("id",0)); wanted[id] = true
+        var u := _find_unit(id)
+        if u == null:
+            u = _spawn_unit(str(data.get("kind","جندي")),_array_pos(data.get("pos",[])),int(data.get("team",0)),id)
+        u.position = _safe_pos(_array_pos(data.get("pos",[])))
+        u.set_meta("hp",float(data.get("hp",100.0)))
+    for u in units.duplicate():
+        if is_instance_valid(u) and not wanted.has(int(u.get_meta("id",0))):
+            units.erase(u); selected.erase(u); u.queue_free()
+
+func _apply_building_snapshot(states: Array) -> void:
+    var wanted := {}
+    for data in states:
+        if typeof(data) != TYPE_DICTIONARY: continue
+        var id := int(data.get("id",0)); wanted[id] = true
+        var b := _find_building(id)
+        if b == null: b = _spawn_building(str(data.get("kind","مقر")),_array_pos(data.get("pos",[])),int(data.get("team",0)),id)
+        b.position = _safe_pos(_array_pos(data.get("pos",[])))
+        b.set_meta("hp",float(data.get("hp",1200.0)))
+    for b in buildings.duplicate():
+        if is_instance_valid(b) and not wanted.has(int(b.get_meta("id",0))):
+            buildings.erase(b); b.queue_free()
+
+func _array_pos(value: Variant) -> Vector3:
+    if value is Array and value.size() >= 3: return Vector3(float(value[0]),float(value[1]),float(value[2]))
+    return Vector3.ZERO
+
+func _find_unit(id: int) -> Node3D:
+    for u in units:
+        if is_instance_valid(u) and int(u.get_meta("id",0)) == id: return u
+    return null
+
+func _find_building(id: int) -> Node3D:
+    for b in buildings:
+        if is_instance_valid(b) and int(b.get_meta("id",0)) == id: return b
+    return null
+
+@rpc("any_peer", "reliable")
+func request_move(ids: Array, target: Vector3) -> void:
+    if not multiplayer.is_server(): return
+    _apply_move(ids,_safe_pos(target))
+
+func _apply_move(ids: Array, target: Vector3) -> void:
+    for id_value in ids:
+        var u := _find_unit(int(id_value))
+        if u != null and int(u.get_meta("team",0)) == 0: u.set_meta("target",_safe_pos(target))
+
+@rpc("any_peer", "reliable")
+func request_produce(kind: String) -> void:
+    if not multiplayer.is_server(): return
+    _apply_produce(kind)
+
+@rpc("any_peer", "reliable")
+func request_build(kind: String, cost: int) -> void:
+    if not multiplayer.is_server(): return
+    _apply_build(kind,cost)
 
 func _update() -> void:
     if status: status.text = "المهمة %d | %s | الخريطة: %s | الموارد: %d | الطاقة: %d | التقنية: RTS | قتلى: %d" % [mission,faction,maps[map_index],resources,power,kills]
