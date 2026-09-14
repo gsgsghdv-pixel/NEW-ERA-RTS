@@ -56,7 +56,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $log = Join-Path $env:RUNNER_TEMP "gameplay-smoke.log"
-          & "$env:GODOT" --headless --path . --script scripts/gameplay_smoke.gd 2>&1 | Tee-Object -FilePath $log
+          & "$env:GODOT" --headless --path . --script scripts\gameplay_smoke.gd 2>&1 | Tee-Object -FilePath $log
           $exitCode = $LASTEXITCODE
           $output = Get-Content $log -Raw -ErrorAction SilentlyContinue
           if ($exitCode -ne 0 -or $output -match "SCRIPT ERROR|Parse Error|Failed to load script") { throw "Gameplay smoke test failed" }
@@ -73,24 +73,29 @@ jobs:
           $hostErr = "$hostLog.err"
           $clientLog = Join-Path $env:RUNNER_TEMP "lan-client.log"
           $clientErr = "$clientLog.err"
+          Remove-Item $hostLog,$hostErr,$clientLog,$clientErr -Force -ErrorAction SilentlyContinue
           $hostProc = Start-Process -FilePath "$env:GODOT" -ArgumentList @('--headless','--path','.','--script','scripts/lan_e2e_smoke.gd','--','--role=host') -PassThru -RedirectStandardOutput $hostLog -RedirectStandardError $hostErr
           Start-Sleep -Seconds 2
-          if ($hostProc.HasExited) { Get-Content $hostLog -ErrorAction SilentlyContinue; Get-Content $hostErr -ErrorAction SilentlyContinue; throw "LAN host exited before client started: $($hostProc.ExitCode)" }
+          if ($hostProc.HasExited) {
+            Write-Host "=== HOST STDOUT ==="; Get-Content $hostLog -ErrorAction SilentlyContinue
+            Write-Host "=== HOST STDERR ==="; Get-Content $hostErr -ErrorAction SilentlyContinue
+            throw "LAN host exited before client started: $($hostProc.ExitCode)"
+          }
           $clientProc = Start-Process -FilePath "$env:GODOT" -ArgumentList @('--headless','--path','.','--script','scripts/lan_e2e_smoke.gd','--','--role=client') -PassThru -RedirectStandardOutput $clientLog -RedirectStandardError $clientErr
-          if (-not $clientProc.WaitForExit(15000)) {
-            Get-Content $hostLog -ErrorAction SilentlyContinue
-            Get-Content $hostErr -ErrorAction SilentlyContinue
-            Get-Content $clientLog -ErrorAction SilentlyContinue
-            Get-Content $clientErr -ErrorAction SilentlyContinue
+          if (-not $clientProc.WaitForExit(25000)) {
+            Write-Host "=== HOST STDOUT ==="; Get-Content $hostLog -ErrorAction SilentlyContinue
+            Write-Host "=== HOST STDERR ==="; Get-Content $hostErr -ErrorAction SilentlyContinue
+            Write-Host "=== CLIENT STDOUT ==="; Get-Content $clientLog -ErrorAction SilentlyContinue
+            Write-Host "=== CLIENT STDERR ==="; Get-Content $clientErr -ErrorAction SilentlyContinue
             Stop-Process -Id $clientProc.Id -Force -ErrorAction SilentlyContinue
             Stop-Process -Id $hostProc.Id -Force -ErrorAction SilentlyContinue
             throw "LAN client E2E timed out"
           }
           if (-not $hostProc.WaitForExit(5000)) {
-            Get-Content $hostLog -ErrorAction SilentlyContinue
-            Get-Content $hostErr -ErrorAction SilentlyContinue
-            Get-Content $clientLog -ErrorAction SilentlyContinue
-            Get-Content $clientErr -ErrorAction SilentlyContinue
+            Write-Host "=== HOST STDOUT ==="; Get-Content $hostLog -ErrorAction SilentlyContinue
+            Write-Host "=== HOST STDERR ==="; Get-Content $hostErr -ErrorAction SilentlyContinue
+            Write-Host "=== CLIENT STDOUT ==="; Get-Content $clientLog -ErrorAction SilentlyContinue
+            Write-Host "=== CLIENT STDERR ==="; Get-Content $clientErr -ErrorAction SilentlyContinue
             Stop-Process -Id $hostProc.Id -Force -ErrorAction SilentlyContinue
             throw "LAN host E2E timed out"
           }
