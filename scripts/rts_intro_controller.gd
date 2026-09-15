@@ -26,12 +26,6 @@ func _begin() -> void:
     if is_instance_valid(camera):
         camera.current = true
         camera.look_at(Vector3.ZERO)
-    if game.has_method("set_process"):
-        game.set_process(false)
-    if game.has_method("set_process_input"):
-        game.set_process_input(false)
-    if game.has_method("set_process_unhandled_input"):
-        game.set_process_unhandled_input(false)
     if is_instance_valid(camera_controller):
         camera_controller.set_process(false)
         camera_controller.set_process_input(false)
@@ -68,7 +62,3 @@ func _finish() -> void:
         camera_controller.set_process(true)
         camera_controller.set_process_input(true)
         camera_controller.set_process_unhandled_input(true)
-    if game != null:
-        game.set_process(true)
-        game.set_process_input(true)
-        game.set_process_unhandled_input(true)
