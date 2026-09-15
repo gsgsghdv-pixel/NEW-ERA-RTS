@@ -5,6 +5,8 @@ class_name RTSBuildIntegration
 var builder: BaseBuildingController
 var economy: BaseEconomy
 var game: Node
+var sync_timer := 0.0
+var registered_buildings: Dictionary = {}
 signal ui_state_changed(resources: int, power: int)
 signal build_finished(owner_peer: int, kind: String, position: Vector3)
 signal unit_ready(owner_peer: int, kind: String)
@@ -22,26 +24,78 @@ func _ready() -> void:
     economy.setup(builder)
     builder.construction_completed.connect(_on_construction_completed)
     builder.production_completed.connect(_on_production_completed)
+    builder.construction_rejected.connect(_on_construction_rejected)
+    builder.production_started.connect(_on_production_started)
     economy.economy_tick.connect(_on_economy_tick)
     builder.setup_player(1, starting_resources)
     economy.setup_player(1, starting_resources, 100)
+    call_deferred("_sync_players")
 
 func _process(delta: float) -> void:
-    if builder == null or economy == null: return
+    if builder == null or economy == null:
+        return
     builder.tick(delta)
     economy.tick(delta)
+    sync_timer += delta
+    if sync_timer >= 0.5:
+        sync_timer = 0.0
+        _sync_players()
+        _register_existing_buildings()
+
+func _sync_players() -> void:
+    if game == null:
+        return
+    var players = game.get("player_peers")
+    if not (players is Dictionary):
+        return
+    for peer_key in players.keys():
+        var owner_peer := int(peer_key)
+        if owner_peer <= 0:
+            continue
+        if not builder.player_resources.has(owner_peer):
+            var initial := int(game.get("player_resources").get(owner_peer, starting_resources)) if game.get("player_resources") is Dictionary else starting_resources
+            builder.setup_player(owner_peer, initial)
+        if not economy.credits.has(owner_peer):
+            var initial_credits := builder.get_resources(owner_peer)
+            economy.setup_player(owner_peer, initial_credits, 100)
+
+func _register_existing_buildings() -> void:
+    if game == null:
+        return
+    var buildings = game.get("buildings")
+    if not (buildings is Array):
+        return
+    for building in buildings:
+        if not is_instance_valid(building):
+            continue
+        var owner_peer := int(building.get_meta("owner_peer", 0))
+        if owner_peer <= 0:
+            continue
+        var key := building.get_instance_id()
+        if registered_buildings.has(key):
+            continue
+        register_existing_building(owner_peer, building)
+        registered_buildings[key] = true
 
 func register_existing_building(owner_peer: int, building: Node3D) -> void:
-    if is_instance_valid(building): builder.register_completed_building(owner_peer, building)
+    if builder == null or not is_instance_valid(building) or owner_peer <= 0:
+        return
+    if not builder.player_resources.has(owner_peer):
+        builder.setup_player(owner_peer, starting_resources)
+    builder.register_completed_building(owner_peer, building)
 
 func can_build(kind: String, position: Vector3, owner_peer := 1) -> bool:
     return builder != null and builder.can_place(owner_peer, kind, position) and builder.missing_prerequisites(owner_peer, kind).is_empty()
 
 func issue_build(kind: String, position: Vector3, owner_peer := 1) -> bool:
-    return builder != null and builder.request_build(owner_peer, kind, position)
+    if builder == null:
+        return false
+    return builder.request_build(owner_peer, kind, position)
 
 func issue_production(kind: String, owner_peer := 1) -> bool:
-    return builder != null and builder.request_production(owner_peer, kind)
+    if builder == null:
+        return false
+    return builder.request_production(owner_peer, kind)
 
 func get_resources(owner_peer := 1) -> int:
     return builder.get_resources(owner_peer) if builder != null else 0
@@ -49,24 +103,48 @@ func get_resources(owner_peer := 1) -> int:
 func get_power(owner_peer := 1) -> int:
     return economy.get_power(owner_peer) if economy != null else 0
 
+func get_construction_queue(owner_peer := 1) -> Array:
+    return builder.get_construction_queue(owner_peer) if builder != null else []
+
+func get_production_queue(owner_peer := 1) -> Array:
+    return builder.get_production_queue(owner_peer) if builder != null else []
+
 func _on_construction_completed(owner_peer: int, kind: String, position: Vector3) -> void:
     build_finished.emit(owner_peer, kind, position)
     if game != null and game.has_method("_spawn_building"):
-        var building = game.call("_spawn_building", kind, position, 0, owner_peer)
-        if is_instance_valid(building): builder.register_completed_building(owner_peer, building)
+        var team := int(game.call("_player_team", owner_peer)) if game.has_method("_player_team") else 0
+        var building = game.call("_spawn_building", kind, position, team, owner_peer)
+        if is_instance_valid(building):
+            builder.register_completed_building(owner_peer, building)
+            registered_buildings[building.get_instance_id()] = true
 
 func _on_production_completed(owner_peer: int, kind: String) -> void:
     unit_ready.emit(owner_peer, kind)
     if game != null and game.has_method("_spawn_unit"):
-        game.call("_spawn_unit", kind, _find_spawn_position(owner_peer), 0, owner_peer)
+        var team := int(game.call("_player_team", owner_peer)) if game.has_method("_player_team") else 0
+        game.call("_spawn_unit", kind, _find_spawn_position(owner_peer, kind), team, owner_peer)
 
-func _find_spawn_position(owner_peer: int) -> Vector3:
+func _find_spawn_position(owner_peer: int, kind: String) -> Vector3:
+    var preferred_factory := "ثكنة" if kind == "جندي" else "مصنع" if kind in ["دبابة", "مدفعية"] else "مطار"
     for b in builder.player_buildings.get(owner_peer, []):
-        if is_instance_valid(b): return b.position + Vector3(5, 0, 0)
+        if is_instance_valid(b) and str(b.get_meta("kind", "")) == preferred_factory:
+            return b.position + Vector3(5, 0, 0)
+    for b in builder.player_buildings.get(owner_peer, []):
+        if is_instance_valid(b):
+            return b.position + Vector3(5, 0, 0)
     return Vector3.ZERO
 
+func _on_construction_rejected(owner_peer: int, kind: String, reason: String) -> void:
+    if owner_peer == 1 and game != null and game.has_method("_log"):
+        game.call("_log", "تعذر بناء %s: %s" % [kind, reason])
+
+func _on_production_started(owner_peer: int, kind: String) -> void:
+    if owner_peer == 1 and game != null and game.has_method("_log"):
+        game.call("_log", "بدأ إنتاج %s" % kind)
+
 func _on_economy_tick(owner_peer: int, credits: int, current_power: int) -> void:
-    if owner_peer != 1: return
+    if owner_peer != 1:
+        return
     ui_state_changed.emit(credits, current_power)
-    if game.has_method("_set_resource_for"):
+    if game != null and game.has_method("_set_resource_for"):
         game.call("_set_resource_for", owner_peer, credits)
