@@ -64,7 +64,7 @@ func _adapt_buildings(collection) -> void:
             building.set_meta("rts_adapted", true)
         if integration == null:
             continue
-        var key := building.get_instance_id()
+        var key: int = building.get_instance_id()
         if not registered_buildings.has(key):
             var owner_peer := int(building.get_meta("owner_peer", 1))
             integration.register_existing_building(owner_peer, building)
