@@ -11,12 +11,14 @@ combat=(ROOT/'scripts/rts_combat_controller.gd').read_text(encoding='utf-8')
 damage=(ROOT/'scripts/rts_damage_system.gd').read_text(encoding='utf-8')
 adapter=(ROOT/'scripts/rts_entity_adapter.gd').read_text(encoding='utf-8')
 tech=(ROOT/'scripts/rts_tech_tree.gd').read_text(encoding='utf-8')
+build=(ROOT/'scripts/rts_build_integration.gd').read_text(encoding='utf-8')
+intro=(ROOT/'scripts/rts_intro_controller.gd').read_text(encoding='utf-8')
 errors=[]
 funcs=re.findall(r'^func\s+([A-Za-z0-9_]+)\s*\(', main, re.M)
 from collections import Counter
 for name,count in Counter(funcs).items():
     if count>1: errors.append(f'duplicate function: {name}')
-for req in ['project.godot','scenes/main.tscn','scripts/main.gd','scripts/network_guard.gd','scripts/map_safety.gd','scripts/lan_lobby.gd','scripts/lan_e2e_smoke.gd','scripts/rts_data_registry.gd','scripts/rts_combat_controller.gd','scripts/rts_damage_system.gd','scripts/rts_entity_adapter.gd','scripts/rts_tech_tree.gd','export_presets.cfg','BUILD_WINDOWS.bat']:
+for req in ['project.godot','scenes/main.tscn','scripts/main.gd','scripts/network_guard.gd','scripts/map_safety.gd','scripts/lan_lobby.gd','scripts/lan_e2e_smoke.gd','scripts/rts_data_registry.gd','scripts/rts_combat_controller.gd','scripts/rts_damage_system.gd','scripts/rts_entity_adapter.gd','scripts/rts_tech_tree.gd','scripts/rts_build_integration.gd','scripts/rts_intro_controller.gd','export_presets.cfg','BUILD_WINDOWS.bat']:
     if not (ROOT/req).exists(): errors.append(f'missing: {req}')
 for m in re.findall(r'preload\("([^"]+)"\)', main):
     if not (ROOT/m.replace('res://','')).exists(): errors.append(f'missing preload: {m}')
@@ -57,7 +59,11 @@ for token in ['rts_adapted','register_existing_building','max_hp','armor']:
     if token not in adapter: errors.append(f'entity adapter missing: {token}')
 for token in ['NODES','can_unlock','unlock','get_available']:
     if token not in tech: errors.append(f'tech tree missing: {token}')
-for token in ['RTSDataRegistry','RTSTechTree','RTSCombatController','RTSEntityAdapter']:
+for token in ['request_queued_build','request_queued_production','_rewire_commands','_next_build_position','get_construction_queue','get_production_queue']:
+    if token not in build: errors.append(f'build integration missing: {token}')
+for token in ['INTRO_TIME := 8.0','sin(elapsed * 0.7)','camera.position = Vector3(0, 34, 31)','_finish()']:
+    if token not in intro: errors.append(f'intro controller missing: {token}')
+for token in ['RTSDataRegistry','RTSTechTree','RTSCombatController','RTSEntityAdapter','RTSIntroController']:
     if token not in scene: errors.append(f'{token} is not integrated into main scene')
 exp=(ROOT/'export_presets.cfg').read_text(encoding='utf-8')
 for token in ['name="Windows Desktop"','platform="Windows Desktop"','binary_format/architecture="x86_64"']:
@@ -67,4 +73,4 @@ if errors:
     print('\n'.join(errors))
     sys.exit(1)
 print('QA PASS')
-print(f'Functions: {len(funcs)} | WAV: {len(list((ROOT/"audio").glob("*.wav")))} | 8-player LAN lobby: PASS | LAN E2E smoke: PASS | LAN protocol guard: PASS | RTS data/combat/tech integration: PASS | RPC/static/export checks: PASS')
+print(f'Functions: {len(funcs)} | WAV: {len(list((ROOT/"audio").glob("*.wav")))} | 8-player LAN lobby: PASS | LAN E2E smoke: PASS | LAN protocol guard: PASS | RTS data/combat/tech/build/intro integration: PASS | RPC/static/export checks: PASS')
