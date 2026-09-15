@@ -1,4 +1,4 @@
-[gd_scene load_steps=13 format=3]
+[gd_scene load_steps=14 format=3]
 
 [ext_resource path="res://scripts/main.gd" type="Script" id="1"]
 [ext_resource path="res://scripts/map_safety.gd" type="Script" id="2"]
@@ -11,6 +11,7 @@
 [ext_resource path="res://scripts/rts_build_integration.gd" type="Script" id="9"]
 [ext_resource path="res://scripts/rts_data_registry.gd" type="Script" id="10"]
 [ext_resource path="res://scripts/rts_combat_controller.gd" type="Script" id="11"]
+[ext_resource path="res://scripts/rts_entity_adapter.gd" type="Script" id="12"]
 
 [node name="NEW_ERA_RTS" type="Node3D"]
 script = ExtResource("1")
@@ -41,6 +42,9 @@ script = ExtResource("9")
 
 [node name="RTSCombatController" type="Node" parent="."]
 script = ExtResource("11")
+
+[node name="RTSEntityAdapter" type="Node" parent="."]
+script = ExtResource("12")
 
 [node name="LANLobby" type="CanvasLayer" parent="."]
 script = ExtResource("4")
