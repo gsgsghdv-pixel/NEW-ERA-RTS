@@ -49,7 +49,7 @@ if 'PORT' not in smoke or '127.0.0.1' not in smoke:
     errors.append('LAN E2E smoke missing local endpoint configuration')
 for token in ['"جندي"','"دبابة"','"مدفعية"','"طائرة"','WEAPONS','ARMOR','BUILDINGS','FACTIONS']:
     if token not in registry: errors.append(f'data registry missing: {token}')
-for token in ['request_attack','calculate_damage','apply_damage','attack_state','attack_target_id']:
+for token in ['request_attack','calculate_damage','apply_damage','attack_state','attack_target_id','call_deferred("_create_marker")']:
     if token not in combat: errors.append(f'combat controller missing: {token}')
 for token in ['calculate_damage','apply_damage','damage_type','armor']:
     if token not in damage: errors.append(f'damage system missing: {token}')
@@ -57,7 +57,7 @@ for token in ['rts_adapted','register_existing_building','max_hp','armor']:
     if token not in adapter: errors.append(f'entity adapter missing: {token}')
 for token in ['NODES','can_unlock','unlock','get_available']:
     if token not in tech: errors.append(f'tech tree missing: {token}')
-for token in ['RTSDataRegistry','RTSCombatController','RTSEntityAdapter']:
+for token in ['RTSDataRegistry','RTSTechTree','RTSCombatController','RTSEntityAdapter']:
     if token not in scene: errors.append(f'{token} is not integrated into main scene')
 exp=(ROOT/'export_presets.cfg').read_text(encoding='utf-8')
 for token in ['name="Windows Desktop"','platform="Windows Desktop"','binary_format/architecture="x86_64"']:
