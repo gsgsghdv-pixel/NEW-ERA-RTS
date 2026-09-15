@@ -94,7 +94,7 @@ func _register_existing_buildings() -> void:
         var owner_peer := int(building.get_meta("owner_peer", 0))
         if owner_peer <= 0:
             continue
-        var key := building.get_instance_id()
+        var key: int = building.get_instance_id()
         if registered_buildings.has(key):
             continue
         register_existing_building(owner_peer, building)
@@ -173,7 +173,7 @@ func _command_kind(text: String) -> String:
     return ""
 
 func _rewire_button(button: Button, kind: String) -> void:
-    var key := button.get_instance_id()
+    var key: int = button.get_instance_id()
     if rewired_buttons.get(key, "") == kind:
         return
     for connection in button.pressed.get_connections():
@@ -191,11 +191,11 @@ func _execute_command(command: String) -> void:
         return
     if command.begins_with("BUILD:"):
         var kind := command.trim_prefix("BUILD:")
-        var position := _next_build_position(kind, owner_peer)
+        var position: Variant = _next_build_position(kind, owner_peer)
         if position == null:
             _on_construction_rejected(owner_peer, kind, "لا يوجد موقع صالح ضمن القاعدة")
             return
-        if issue_build(kind, position, owner_peer):
+        if issue_build(kind, position as Vector3, owner_peer):
             _sync_main_resources(owner_peer)
     elif command.begins_with("UNIT:"):
         var unit_kind := command.trim_prefix("UNIT:")
