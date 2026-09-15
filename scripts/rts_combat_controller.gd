@@ -117,7 +117,7 @@ func _find_enemy_at(world: Vector3) -> Node3D:
         return null
     for enemy in enemies:
         if is_instance_valid(enemy):
-            var d := enemy.position.distance_to(world)
+            var d: float = enemy.position.distance_to(world)
             if d <= best_distance:
                 best_distance = d
                 best = enemy
