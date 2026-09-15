@@ -16,12 +16,12 @@ func _ready() -> void:
     if data == null:
         data = RTSDataRegistry.new()
         data.name = "RTSDataRegistry"
-        game.add_child(data)
+        game.call_deferred("add_child", data)
     damage_system = RTSDamageSystem.new()
     damage_system.name = "RTSDamageSystem"
     add_child(damage_system)
     damage_system.setup(data)
-    _create_marker()
+    call_deferred("_create_marker")
 
 func _input(event: InputEvent) -> void:
     if not (event is InputEventMouseButton):
@@ -78,6 +78,8 @@ func _process(delta: float) -> void:
         if marker_timer <= 0.0 and is_instance_valid(order_marker):
             order_marker.visible = false
     if multiplayer.multiplayer_peer != null and not multiplayer.is_server():
+        return
+    if data == null:
         return
     for attacker_id in attack_state.keys().duplicate():
         var state: Dictionary = attack_state[attacker_id]
@@ -143,6 +145,8 @@ func _destroy_entity(entity: Node3D) -> void:
     entity.queue_free()
 
 func _create_marker() -> void:
+    if is_instance_valid(order_marker):
+        return
     order_marker = MeshInstance3D.new()
     var cylinder := CylinderMesh.new()
     cylinder.top_radius = 1.25
@@ -154,7 +158,7 @@ func _create_marker() -> void:
     material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
     order_marker.material_override = material
     order_marker.visible = false
-    game.add_child(order_marker)
+    game.call_deferred("add_child", order_marker)
 
 func _show_marker(position: Vector3) -> void:
     if not is_instance_valid(order_marker):
