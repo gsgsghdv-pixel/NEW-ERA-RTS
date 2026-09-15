@@ -120,6 +120,31 @@ func issue_production(kind: String, owner_peer := 1) -> bool:
         return false
     return builder.request_production(owner_peer, kind)
 
+@rpc("any_peer", "reliable")
+func request_queued_build(kind: String, position: Vector3) -> void:
+    if not multiplayer.is_server():
+        return
+    var sender := multiplayer.get_remote_sender_id()
+    if sender <= 0:
+        return
+    _sync_players()
+    var safe_kind := str(kind)
+    var safe_position := position
+    if issue_build(safe_kind, safe_position, sender):
+        _sync_main_resources(sender)
+
+@rpc("any_peer", "reliable")
+func request_queued_production(kind: String) -> void:
+    if not multiplayer.is_server():
+        return
+    var sender := multiplayer.get_remote_sender_id()
+    if sender <= 0:
+        return
+    _sync_players()
+    var safe_kind := str(kind)
+    if issue_production(safe_kind, sender):
+        _sync_main_resources(sender)
+
 func get_resources(owner_peer := 1) -> int:
     return builder.get_resources(owner_peer) if builder != null else 0
 
@@ -185,21 +210,21 @@ func _rewire_button(button: Button, kind: String) -> void:
 
 func _execute_command(command: String) -> void:
     var owner_peer := int(game.call("_local_peer_id")) if game.has_method("_local_peer_id") else 1
-    if multiplayer.multiplayer_peer != null and not multiplayer.is_server():
-        if game.has_method("_log"):
-            game.call("_log", "الأوامر المتقدمة تُنفّذ عبر المضيف")
-        return
     if command.begins_with("BUILD:"):
         var kind := command.trim_prefix("BUILD:")
         var position: Variant = _next_build_position(kind, owner_peer)
         if position == null:
             _on_construction_rejected(owner_peer, kind, "لا يوجد موقع صالح ضمن القاعدة")
             return
-        if issue_build(kind, position as Vector3, owner_peer):
+        if multiplayer.multiplayer_peer != null and not multiplayer.is_server():
+            request_queued_build.rpc_id(1, kind, position as Vector3)
+        elif issue_build(kind, position as Vector3, owner_peer):
             _sync_main_resources(owner_peer)
     elif command.begins_with("UNIT:"):
         var unit_kind := command.trim_prefix("UNIT:")
-        if issue_production(unit_kind, owner_peer):
+        if multiplayer.multiplayer_peer != null and not multiplayer.is_server():
+            request_queued_production.rpc_id(1, unit_kind)
+        elif issue_production(unit_kind, owner_peer):
             _sync_main_resources(owner_peer)
 
 func _next_build_position(kind: String, owner_peer: int) -> Variant:
