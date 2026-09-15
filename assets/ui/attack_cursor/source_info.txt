@@ -1,0 +1,3 @@
+Source: user-provided archivetempsccattack.ani
+Decoded: 8 frames, 32x32, 4-bit ICO/DIB payloads with transparency masks.
+Frame delay source sequence: 4 ticks for each frame.
