@@ -1,0 +1,1 @@
+PNG binary frame is maintained from the original ANI source; binary insertion is handled by the release packaging pipeline.
