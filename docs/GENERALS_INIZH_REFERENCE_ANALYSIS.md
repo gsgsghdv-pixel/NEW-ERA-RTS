@@ -14,7 +14,7 @@ The supplied INIZH.big was successfully parsed as a BIGF archive and inspected l
 - 472 CommandSet definitions in CommandSet.ini
 - 817 CommandButton definitions in CommandButton.ini
 - 58 faction-building objects in FactionBuilding.ini
-- 45 frontline faction unit definitions across the main USA/China/GLA infantry+vehicle files inspected
+- 66 frontline faction unit definitions across the inspected USA/China/GLA infantry and vehicle files
 
 ## Systems that matter for NEW ERA RTS
 1. PlayerTemplate defines playable factions, starting buildings/units, intrinsic sciences, science command sets, colors and presentation.
