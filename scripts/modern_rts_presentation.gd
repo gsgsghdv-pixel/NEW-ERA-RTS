@@ -123,9 +123,9 @@ func _minimap(ui: Control) -> void:
 func _process(delta: float) -> void:
     if game == null or not is_instance_valid(game):
         return
-    var r = game.get("resources")
+    var r: Variant = game.get("resources")
     resources_label.text = "💰 %d     ⚡ %d     🎖 %s     🌊 %d" % [int(r), int(game.get("power")), str(game.get("faction")), int(game.get("wave"))]
-    var list = game.get("selected")
+    var list: Variant = game.get("selected")
     if list is Array and not list.is_empty():
         var lines := ["الوحدات المحددة: %d" % list.size()]
         for u in list:
@@ -141,7 +141,7 @@ func _process(delta: float) -> void:
 func _camera(delta: float) -> void:
     if game.cam == null:
         return
-    var d := Vector3.ZERO
+    var d: Vector3 = Vector3.ZERO
     if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP): d.z -= 1.0
     if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN): d.z += 1.0
     if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT): d.x -= 1.0
@@ -153,7 +153,7 @@ func _camera(delta: float) -> void:
 
 func _input(event: InputEvent) -> void:
     if event is InputEventKey and event.pressed and event.keycode == KEY_F11:
-        var mode := DisplayServer.window_get_mode()
+        var mode: int = DisplayServer.window_get_mode()
         DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED if mode == DisplayServer.WINDOW_MODE_FULLSCREEN else DisplayServer.WINDOW_MODE_FULLSCREEN)
     elif event is InputEventMouseButton and event.pressed:
         if event.button_index == MOUSE_BUTTON_WHEEL_UP:
@@ -164,7 +164,7 @@ func _input(event: InputEvent) -> void:
 func _zoom(amount: float) -> void:
     if game.cam == null:
         return
-    var old_y := max(game.cam.position.y, 0.1)
-    var new_y := clamp(old_y + amount, MIN_ZOOM, MAX_ZOOM)
+    var old_y: float = maxf(float(game.cam.position.y), 0.1)
+    var new_y: float = clampf(old_y + amount, MIN_ZOOM, MAX_ZOOM)
     game.cam.position.y = new_y
-    game.cam.position.z = clamp(game.cam.position.z * new_y / old_y, 18.0, 75.0)
+    game.cam.position.z = clampf(game.cam.position.z * new_y / old_y, 18.0, 75.0)
