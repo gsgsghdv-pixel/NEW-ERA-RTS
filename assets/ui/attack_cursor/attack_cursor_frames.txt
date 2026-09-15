@@ -1,0 +1,1 @@
+The original ANI contains 8 icon chunks. Runtime integration should use transparent 32x32 frames in sequence 00..07 at 4/60-second per frame (~15 FPS), with the cursor hotspot centered at 16,16.
