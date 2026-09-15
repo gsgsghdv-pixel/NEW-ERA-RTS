@@ -33,6 +33,26 @@ func _ready() -> void:
     call_deferred("_sync_players")
     call_deferred("_rewire_commands")
 
+func _input(event: InputEvent) -> void:
+    if not (event is InputEventKey):
+        return
+    var key := event as InputEventKey
+    if not key.pressed or key.echo:
+        return
+    var unit_kind := ""
+    if key.keycode == KEY_1:
+        unit_kind = "جندي"
+    elif key.keycode == KEY_2:
+        unit_kind = "دبابة"
+    elif key.keycode == KEY_3:
+        unit_kind = "مدفعية"
+    elif key.keycode == KEY_4:
+        unit_kind = "طائرة"
+    if unit_kind == "":
+        return
+    _execute_command("UNIT:" + unit_kind)
+    get_viewport().set_input_as_handled()
+
 func _process(delta: float) -> void:
     if builder == null or economy == null:
         return
@@ -115,10 +135,7 @@ func get_production_queue(owner_peer := 1) -> Array:
 func _rewire_commands() -> void:
     if game == null:
         return
-    var root := game.get_node_or_null(".")
-    if root == null:
-        root = game
-    _scan_controls(root)
+    _scan_controls(game)
 
 func _scan_controls(node: Node) -> void:
     for child in node.get_children():
